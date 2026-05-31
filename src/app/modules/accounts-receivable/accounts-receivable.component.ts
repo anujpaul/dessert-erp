@@ -136,7 +136,7 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
           <div *ngIf="variantResults.length" class="variant-dropdown">
             <div *ngFor="let v of variantResults" class="variant-option" (click)="selectVariant(v)">
               <strong>{{ v.sku }}</strong> — {{ v.productName }}
-              <span *ngIf="v.variantDescription"> · {{ v.variantDescription }}</span>
+              <span *ngIf="v.size || v.color || v.material"> · {{ variantAttrs(v) }}</span>
               <span class="variant-price">{{ v.effectivePrice | currency }}</span>
               <span class="variant-qty">({{ v.quantityAvailable }} avail)</span>
             </div>
@@ -467,6 +467,10 @@ export class AccountsReceivableComponent implements OnInit {
     this.searchTimer = setTimeout(() => {
       this.api.searchVariants(q).subscribe(r => this.variantResults = r);
     }, 250);
+  }
+
+  variantAttrs(v: VariantLookup): string {
+    return [v.size, v.color, v.material].filter(Boolean).join(', ');
   }
 
   selectVariant(v: VariantLookup) {

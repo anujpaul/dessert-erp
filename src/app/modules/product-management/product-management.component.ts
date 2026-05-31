@@ -5,7 +5,7 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import {
   Category, Brand, ProductSummary, ProductDetail,
-  ProductVariantDto, InventoryDto
+  ProductVariantDto, InventoryDto, Vendor
 } from '../../core/models/erp.models';
 
 type Tab = 'categories' | 'brands' | 'products' | 'inventory';
@@ -328,6 +328,26 @@ type Tab = 'categories' | 'brands' | 'products' | 'inventory';
             <dt>Tax Rate</dt><dd>{{ selectedProduct()!.taxRate }}%</dd>
             <dt>Tags</dt><dd>{{ selectedProduct()!.tags || '—' }}</dd>
             <dt>Description</dt><dd>{{ selectedProduct()!.description || '—' }}</dd>
+            <dt style="align-self:center">Preferred Vendor</dt>
+            <dd>
+              @if (!editingPreferredVendor) {
+                <span style="display:flex;align-items:center;gap:.5rem">
+                  <span>{{ selectedProduct()!.preferredVendorName || '—' }}</span>
+                  <button class="btn btn-sm btn-secondary" style="font-size:.72rem;padding:.15rem .45rem" (click)="startEditPreferredVendor()">✏️</button>
+                </span>
+              } @else {
+                <span style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+                  <select class="form-control" style="padding:.25rem .4rem;font-size:.82rem;flex:1;min-width:120px" [(ngModel)]="preferredVendorId">
+                    <option value="">— None —</option>
+                    @for (v of vendors(); track v.id) {
+                      <option [value]="v.id">{{ v.name }}</option>
+                    }
+                  </select>
+                  <button class="btn btn-primary btn-sm" style="font-size:.75rem" (click)="savePreferredVendor()">Save</button>
+                  <button class="btn btn-secondary btn-sm" style="font-size:.75rem" (click)="editingPreferredVendor = false">✕</button>
+                </span>
+              }
+            </dd>
           </dl>
         </div>
       </div>
@@ -481,6 +501,13 @@ export class ProductManagementComponent implements OnInit {
   showBrandForm = false;
   brandForm = { code: '', name: '', country: '', website: '' };
 
+  // Vendors (loaded for preferred vendor picker)
+  vendors = signal<Vendor[]>([]);
+
+  // Preferred vendor edit state
+  editingPreferredVendor = false;
+  preferredVendorId = '';
+
   // Products
   products = signal<ProductSummary[]>([]);
   selectedProduct = signal<ProductDetail | null>(null);
@@ -522,6 +549,7 @@ export class ProductManagementComponent implements OnInit {
     this.loadBrands();
     this.loadProducts();
     this.loadInventory();
+    this.api.getVendors().subscribe(v => this.vendors.set(v));
   }
 
   setTab(t: Tab) {
@@ -658,6 +686,25 @@ export class ProductManagementComponent implements OnInit {
     this.api.changeProductStatus(p.id, status).subscribe(() => this.openProduct(p.id));
   }
 
+  startEditPreferredVendor() {
+    const p = this.selectedProduct();
+    this.preferredVendorId = p?.preferredVendorId ?? '';
+    this.editingPreferredVendor = true;
+  }
+
+  savePreferredVendor() {
+    const p = this.selectedProduct();
+    if (!p) return;
+    const vendorId = this.preferredVendorId || null;
+    this.api.setPreferredVendor(p.id, vendorId).subscribe({
+      next: () => {
+        this.editingPreferredVendor = false;
+        this.openProduct(p.id); // reload to get updated vendor name
+      },
+      error: err => alert('Error: ' + (err.error?.error ?? err.message))
+    });
+  }
+
   // ── Variants ───────────────────────────────────────────────────────────────
 
   addVariant() {
@@ -704,48 +751,6 @@ export class ProductManagementComponent implements OnInit {
 
   clearInventorySelection() {
     this.selectedInventoryVariant.set(null);
-    this.invAdjDelta = 0;
-    this.invAdjReason = '';
-    this.invSetQty = 0;
-  }
-
-  adjustInventory() {
-    const id = this.selectedInventoryVariant();
-    if (!id) return;
-    this.api.adjustInventory(id, { delta: +this.invAdjDelta, reason: this.invAdjReason }).subscribe({
-      next: () => { this.invAdjDelta = 0; this.invAdjReason = ''; this.loadInventory(); },
-      error: err => alert('Error: ' + (err.error?.title ?? err.message))
-    });
-  }
-
-  setInventory() {
-    const id = this.selectedInventoryVariant();
-    if (!id) return;
-    this.api.setInventory(id, { quantity: +this.invSetQty, countDate: new Date().toISOString() }).subscribe({
-      next: () => { this.invSetQty = 0; this.loadInventory(); },
-      error: err => alert('Error: ' + (err.error?.title ?? err.message))
-    });
-  }
-
-  updateThresholds() {
-    const id = this.selectedInventoryVariant();
-    if (!id) return;
-    this.api.updateThresholds(id, this.invThresholds).subscribe({
-      next: () => this.loadInventory(),
-      error: err => alert('Error: ' + (err.error?.title ?? err.message))
-    });
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
-  statusClass(status: string): Record<string, boolean> {
-    return {
-      'badge-green': status === 'Active',
-      'badge-gray':  status === 'Inactive',
-      'badge-red':   status === 'Discontinued'
-    };
-  }
-}
     this.invAdjDelta = 0;
     this.invAdjReason = '';
     this.invSetQty = 0;

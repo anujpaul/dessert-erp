@@ -163,7 +163,7 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
               <div class="variant-main">
                 <code>{{ v.sku }}</code>
                 <span>{{ v.productName }}</span>
-                <span class="variant-attrs">{{ [v.size, v.color, v.material] | join }}</span>
+                <span class="variant-attrs">{{ variantAttrs(v) }}</span>
               </div>
               <div class="variant-meta">
                 Cost: <strong>{{ v.effectiveCost | currency }}</strong> ·
@@ -606,6 +606,10 @@ export class AccountsPayableComponent implements OnInit {
       unitCost: v.effectiveCost,
       taxRate: v.taxRate
     };
+  }
+
+  variantAttrs(v: VariantLookup): string {
+    return [v.size, v.color, v.material].filter(Boolean).join(', ');
   }
 
   clearLineForm() {
