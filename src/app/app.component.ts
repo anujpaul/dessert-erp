@@ -271,7 +271,12 @@ export class AppComponent {
     { label: 'Accounts Payable', icon: '🧾',
       items: [{ label: 'Overview', route: '/accounts-payable', icon: '📋' }] },
     { label: 'Product Management', icon: '🛍️',
-      items: [{ label: 'Catalog & Inventory', route: '/product-management', icon: '📦' }] }
+      items: [{ label: 'Catalog & Inventory', route: '/product-management', icon: '📦' }] },
+    { label: 'Data Management', icon: '📂',
+      items: [
+        { label: 'Import / Export', route: '/data-management', icon: '🔄' },
+        { label: 'Batch Jobs',      route: '/batch-jobs',      icon: '⚙️' }
+      ] }
   ];
 
   constructor(

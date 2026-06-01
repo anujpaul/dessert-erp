@@ -37,5 +37,15 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./modules/system-admin/system-admin.component').then(m => m.SystemAdminComponent)
   },
+  {
+    path: 'data-management',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/data-management/data-management.component').then(m => m.DataManagementComponent)
+  },
+  {
+    path: 'batch-jobs',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/batch-jobs/batch-jobs.component').then(m => m.BatchJobsComponent)
+  },
   { path: '**', redirectTo: 'dashboard' }
 ];

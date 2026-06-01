@@ -13,7 +13,7 @@ import { OrgService } from '../../core/services/org.service';
     <div class="login-wrap">
       <div class="login-card">
         <div class="login-logo">
-          <span class="logo-icon">🍰</span>
+          <span class="logo-icon"></span>
           <h1>Dessert ERP</h1>
           <p>Enterprise Resource Planning</p>
         </div>
@@ -54,7 +54,14 @@ import { OrgService } from '../../core/services/org.service';
       width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,.5);
     }
     .login-logo { text-align: center; margin-bottom: 32px; }
-    .logo-icon  { font-size: 48px; display: block; margin-bottom: 8px; }
+    .logo-icon  { 
+      width: 48px; 
+      height: 48px; 
+      display: block; 
+      margin: 0 auto 8px; 
+      background: url('/favicon.ico') no-repeat center center;
+      background-size: contain;
+    }
     h1          { color: #f1f5f9; font-size: 24px; margin: 0 0 4px; }
     p           { color: #94a3b8; font-size: 13px; margin: 0; }
     .field      { margin-bottom: 16px; }

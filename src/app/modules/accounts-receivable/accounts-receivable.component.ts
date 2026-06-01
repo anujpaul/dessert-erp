@@ -102,7 +102,11 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
     <div class="split">
       <div class="list-panel">
         <div *ngFor="let o of salesOrders" class="list-row" [class.active]="selectedOrder?.id === o.id" (click)="selectOrder(o.id)">
-          <div class="row-main"><strong>{{ o.orderNumber }}</strong><span class="badge" [class]="'badge-so-' + o.status.toLowerCase()">{{ o.status }}</span></div>
+          <div class="row-main">
+            <strong>{{ o.orderNumber }}</strong>
+            <span class="badge" [class]="'badge-so-' + o.status.toLowerCase()">{{ o.status }}</span>
+            <span *ngIf="o.isExported" class="badge badge-exported" [title]="'Exported ' + (o.exportedAt | date:'MMM d, HH:mm')">✓ Exported</span>
+          </div>
           <div class="row-sub">{{ o.customerName }}</div>
           <div class="row-amounts">{{ o.orderDate | date:'MMM d, y' }} · {{ o.grandTotal | currency }}</div>
         </div>
@@ -117,6 +121,10 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
             <button *ngIf="selectedOrder.status === 'Picking'" class="btn-primary-sm" (click)="soShip()">Ship</button>
             <button *ngIf="selectedOrder.status === 'Shipped'" class="btn-primary-sm" (click)="soGenerateInvoice()">Generate Invoice</button>
             <button *ngIf="['Draft','Confirmed','Picking'].includes(selectedOrder.status)" class="btn-danger-sm" (click)="soAction('cancel')">Cancel</button>
+            <button *ngIf="selectedOrder.isExported" class="btn-ghost-sm" (click)="resetExport(selectedOrder)" title="Mark this order for re-export on the next batch run">↩ Re-Export</button>
+          </div>
+          <div *ngIf="selectedOrder.isExported" class="export-badge">
+            ✓ Exported {{ selectedOrder.exportedAt | date:'MMM d, y HH:mm' }}
           </div>
         </div>
         <div class="info-grid">
@@ -298,6 +306,9 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
     .btn-ghost { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; padding: .5rem 1rem; border-radius: 6px; cursor: pointer; font-size: .875rem; }
     .btn-primary-sm { background: #1d4ed8; color: #fff; border: none; padding: .35rem .75rem; border-radius: 5px; cursor: pointer; font-size: .8rem; }
     .btn-danger-sm { background: #fee2e2; color: #dc2626; border: none; padding: .35rem .75rem; border-radius: 5px; cursor: pointer; font-size: .8rem; }
+    .btn-ghost-sm { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; padding: .35rem .75rem; border-radius: 5px; cursor: pointer; font-size: .8rem; }
+    .badge-exported { background: #d1fae5; color: #065f46; font-size: .68rem; }
+    .export-badge { font-size: .78rem; color: #065f46; background: #d1fae5; border-radius: 5px; padding: .25rem .6rem; margin-top: .4rem; display: inline-block; }
     .btn-xs { padding: .2rem .5rem; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 4px; cursor: pointer; font-size: .75rem; }
     .btn-red { border-color: #fecaca; color: #dc2626; }
     .form-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; }
@@ -522,6 +533,18 @@ export class AccountsReceivableComponent implements OnInit {
     this.api.generateARInvoice(this.selectedOrder.id).subscribe(() => {
       this.selectOrder(this.selectedOrder!.id);
       this.api.getARInvoices().subscribe(d => this.arInvoices = d);
+    });
+  }
+
+  resetExport(order: SalesOrder | null) {
+    if (!order) return;
+    if (!confirm(`Mark "${order.orderNumber}" for re-export? It will be included in the next export batch run.`)) return;
+    this.api.resetExport('SalesOrder', [order.id]).subscribe({
+      next: () => {
+        this.loadSalesOrders();
+        this.selectOrder(order.id);
+      },
+      error: err => alert('Failed to reset: ' + (err.error?.error ?? err.message))
     });
   }
 

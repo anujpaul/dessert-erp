@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { environment } from '../../../environments/environment';
 import {
   Organization,
+  ImportJob, ImportJobRow, RowResult, BatchJobConfig,
   Category, Brand, ProductSummary, ProductDetail, InventoryDto, VariantLookup,
   FiscalYear, FiscalPeriod, AccountType, Account, JournalEntry, TrialBalanceLine,
   Customer, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport,
@@ -156,4 +157,58 @@ export class ApiService {
   voidAPInvoice = (id: string) => this.http.post<void>(`${this.base}/ap/invoices/${id}/void`, {});
   createAPPayment = (r: any) => this.http.post<any>(`${this.base}/ap/payments`, r);
   getAPAgingReport = () => this.http.get<APAgingReport[]>(`${this.base}/ap/reports/aging`);
+
+  // ── Data Management ────────────────────────────────────────────────────────
+  getImportJobs = () => this.http.get<ImportJob[]>(`${this.base}/dm/import-jobs`);
+  getImportJob  = (id: string) => this.http.get<ImportJob>(`${this.base}/dm/import-jobs/${id}`);
+  getImportJobRows = (id: string, page = 1, pageSize = 100) =>
+    this.http.get<ImportJobRow[]>(`${this.base}/dm/import-jobs/${id}/rows?page=${page}&pageSize=${pageSize}`);
+
+  /** Full pipeline: stage + validate + promote in one request (good for small/medium files) */
+  uploadImport = (file: File, entityType: string, fileFormat: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ job: ImportJob; rowResults: RowResult[] }>(
+      `${this.base}/dm/import?entityType=${entityType}&fileFormat=${fileFormat}`, form);
+  };
+
+  /** Stage + validate only — user reviews errors, then calls promoteImport() */
+  stageImport = (file: File, entityType: string, fileFormat: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ job: ImportJob; message: string }>(
+      `${this.base}/dm/import/stage?entityType=${entityType}&fileFormat=${fileFormat}`, form);
+  };
+
+  /** Promote Valid staging rows to real tables */
+  promoteImport = (jobId: string) =>
+    this.http.post<{ job: ImportJob }>(`${this.base}/dm/import-jobs/${jobId}/promote`, {});
+
+  // ── Batch Jobs ──────────────────────────────────────────────────────────────
+  getBatchJobs    = () => this.http.get<BatchJobConfig[]>(`${this.base}/batch-jobs`);
+  getBatchJob     = (id: string) => this.http.get<BatchJobConfig>(`${this.base}/batch-jobs/${id}`);
+  createBatchJob  = (req: Partial<BatchJobConfig> & { cronExpression: string }) =>
+    this.http.post<BatchJobConfig>(`${this.base}/batch-jobs`, req);
+  updateBatchJob  = (id: string, req: any) =>
+    this.http.put<BatchJobConfig>(`${this.base}/batch-jobs/${id}`, req);
+  deleteBatchJob  = (id: string) => this.http.delete(`${this.base}/batch-jobs/${id}`);
+  enableBatchJob  = (id: string) => this.http.post(`${this.base}/batch-jobs/${id}/enable`, {});
+  disableBatchJob = (id: string) => this.http.post(`${this.base}/batch-jobs/${id}/disable`, {});
+  triggerBatchJob = (id: string) =>
+    this.http.post<{ message: string; hangfireJobId: string }>(`${this.base}/batch-jobs/${id}/trigger`, {});
+  resetExport = (entityType: string, entityIds: string[]) =>
+    this.http.post<{ message: string; count: number }>(`${this.base}/batch-jobs/reset-export`, { entityType, entityIds });
+  getExportHistory = (entityType?: string) => {
+    let params = new HttpParams();
+    if (entityType) params = params.set('entityType', entityType);
+    return this.http.get<any[]>(`${this.base}/batch-jobs/export-history`, { params });
+  };
+
+  exportData = (entityType: string, fileFormat: string) =>
+    this.http.get(`${this.base}/dm/export?entityType=${entityType}&fileFormat=${fileFormat}`,
+      { responseType: 'blob', observe: 'response' });
+
+  downloadTemplate = (entityType: string, fileFormat: string) =>
+    this.http.get(`${this.base}/dm/template?entityType=${entityType}&fileFormat=${fileFormat}`,
+      { responseType: 'blob', observe: 'response' });
 }

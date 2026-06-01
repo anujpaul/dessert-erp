@@ -14,6 +14,68 @@ export interface Organization {
   createdAt: string;
 }
 
+// ── Data Management ───────────────────────────────────────────────────────────
+export interface ImportJob {
+  id: string;
+  entityType: string;
+  fileFormat: string;
+  fileName: string;
+  status: 'Queued' | 'Processing' | 'Completed' | 'Failed' | 'PartialSuccess';
+  totalRows: number;
+  successRows: number;
+  failedRows: number;
+  stagedRows: number;
+  validRows: number;
+  invalidRows: number;
+  promotedRows: number;
+  errorSummary?: string;
+  triggeredBy?: string;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+// ── Batch Jobs ────────────────────────────────────────────────────────────────
+export type BatchJobType =
+  'ImportSalesOrder' | 'ImportPurchaseOrder' | 'ImportVendor' | 'ImportProduct' |
+  'ExportSalesOrder' | 'ExportPurchaseOrder' | 'ExportVendor' | 'ExportProduct';
+
+export type BatchJobRunStatus = 'Never' | 'Running' | 'Success' | 'PartialSuccess' | 'Failed' | 'NoFilesFound';
+
+export interface BatchJobConfig {
+  id: string;
+  name: string;
+  jobType: BatchJobType;
+  isEnabled: boolean;
+  cronExpression: string;
+  localInboxPath: string;
+  localProcessedPath: string;
+  localErrorPath: string;
+  localExportPath?: string;
+  fileFormat: string;
+  exportFileNamePattern?: string;
+  autoConfirmSalesOrders: boolean;
+  lastRunStatus: BatchJobRunStatus;
+  lastRunAt?: string;
+  lastRunMessage?: string;
+  lastRunFilesProcessed: number;
+  lastRunRowsPromoted: number;
+  createdAt: string;
+}
+
+export interface ImportJobRow {
+  id: string;
+  rowNumber: number;
+  status: 'Pending' | 'Valid' | 'Invalid' | 'Promoted' | 'Skipped';
+  errorMessage?: string;
+  promotedEntityId?: string;
+  promotedAt?: string;
+}
+export interface RowResult {
+  row: number;
+  success: boolean;
+  error?: string;
+}
+
 // ── Product Management ────────────────────────────────────────────────────────
 export interface Category {
   id: string; code: string; name: string; description?: string;
@@ -117,6 +179,7 @@ export interface SalesOrderSummary {
   id: string; orderNumber: string; customerId: string; customerName: string;
   orderDate: string; requestedShipDate?: string; customerRef: string;
   status: SalesOrderStatus; grandTotal: number; lineCount: number; createdAt: string;
+  isExported: boolean; exportedAt?: string;
 }
 export interface SalesOrder {
   id: string; orderNumber: string; customerId: string; customerName: string;
@@ -124,7 +187,11 @@ export interface SalesOrder {
   description: string; customerRef: string; currency: string;
   status: SalesOrderStatus;
   subTotal: number; taxTotal: number; discountTotal: number; grandTotal: number;
-  arInvoiceId?: string; createdAt: string; lines: SalesOrderLine[];
+  arInvoiceId?: string;
+  createdAt: string;
+  lines: SalesOrderLine[];
+  isExported: boolean;
+  exportedAt?: string;
 }
 export interface ARInvoice {
   id: string; invoiceNumber: string; customerId: string; customerName: string;
