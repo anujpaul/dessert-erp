@@ -41,6 +41,69 @@ export type BatchJobType =
 
 export type BatchJobRunStatus = 'Never' | 'Running' | 'Success' | 'PartialSuccess' | 'Failed' | 'NoFilesFound';
 
+// ── Retail ─────────────────────────────────────────────────────────────────────
+export interface RetailStore {
+  id: string; storeCode: string; name: string;
+  address?: string; phone?: string; managerName?: string;
+  isActive: boolean; createdAt: string;
+}
+
+export interface POSTransactionLine {
+  id: string; productVariantId?: string; sku: string; productName: string;
+  unitOfMeasure: string; quantity: number; unitPrice: number;
+  discountPct: number; discountAmount: number; taxRate: number;
+  lineSubTotal: number; taxAmount: number; lineTotal: number; isReturn: boolean;
+}
+
+export interface POSPayment {
+  id: string; paymentMethod: string; amount: number; reference?: string;
+}
+
+export interface POSTransactionSummary {
+  id: string; transactionNumber: string; storeName: string; externalRef?: string;
+  transactionDate: string; transactionType: string; status: string;
+  channel: string; fulfillmentStatus: string;
+  grandTotal: number; lineCount: number; couponCode?: string;
+  customerName?: string; externalOrderRef?: string;
+  arInvoiceId?: string; createdAt: string;
+}
+
+export interface POSTransaction extends POSTransactionSummary {
+  storeId: string; cashierId?: string; cashierName?: string; currency: string;
+  customerEmail?: string; customerPhone?: string;
+  deliveryAddress?: string; channelNotes?: string;
+  subTotal: number; discountTotal: number; taxTotal: number;
+  tenderedAmount: number; changeAmount: number; couponDiscount: number;
+  journalEntryId?: string; processingError?: string; sourceFile?: string;
+  lines: POSTransactionLine[]; payments: POSPayment[];
+}
+
+export interface Promotion {
+  id: string; name: string; description?: string; discountType: string;
+  status: string; discountValue: number; buyQuantity?: number; getQuantity?: number;
+  minimumOrderAmount: number; maxUsesTotal: number; maxUsesPerCustomer: number;
+  usedCount: number; startDate: string; endDate?: string;
+  applyToAllProducts: boolean; applicableSkus?: string; createdAt: string;
+}
+
+export interface Coupon {
+  id: string; promotionId: string; promotionName: string;
+  code: string; isActive: boolean; maxUses: number; usedCount: number;
+  remainingUses: number; expiresAt?: string; createdAt: string;
+}
+
+export interface CouponValidationResult {
+  isValid: boolean; message?: string; promotionName?: string;
+  discountType?: string; discountValue: number; discountAmount: number;
+  expiresAt?: string; remainingUses: number;
+}
+
+export interface RetailSummary {
+  totalTransactions: number; processedTransactions: number; failedTransactions: number;
+  totalRevenue: number; totalDiscounts: number; totalTax: number;
+  totalItemsSold: number; topStore: string;
+}
+
 export interface BatchJobConfig {
   id: string;
   name: string;

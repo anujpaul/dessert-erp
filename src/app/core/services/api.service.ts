@@ -7,7 +7,9 @@ import {
   Category, Brand, ProductSummary, ProductDetail, InventoryDto, VariantLookup,
   FiscalYear, FiscalPeriod, AccountType, Account, JournalEntry, TrialBalanceLine,
   Customer, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport,
-  Vendor, PurchaseOrderSummary, PurchaseOrder, APInvoice, APAgingReport
+  Vendor, PurchaseOrderSummary, PurchaseOrder, APInvoice, APAgingReport,
+  RetailStore, POSTransactionSummary, POSTransaction, Promotion, Coupon,
+  CouponValidationResult, RetailSummary
 } from '../models/erp.models';
 
 @Injectable({ providedIn: 'root' })
@@ -202,6 +204,49 @@ export class ApiService {
     let params = new HttpParams();
     if (entityType) params = params.set('entityType', entityType);
     return this.http.get<any[]>(`${this.base}/batch-jobs/export-history`, { params });
+  };
+
+  // ── Retail ─────────────────────────────────────────────────────────────────
+  getRetailStores     = () => this.http.get<RetailStore[]>(`${this.base}/omnichannel/stores`);
+  createRetailStore   = (r: any) => this.http.post<RetailStore>(`${this.base}/omnichannel/stores`, r);
+  updateRetailStore   = (id: string, r: any) => this.http.put<RetailStore>(`${this.base}/omnichannel/stores/${id}`, r);
+  toggleRetailStore   = (id: string, active: boolean) =>
+    this.http.post(`${this.base}/omnichannel/stores/${id}/toggle?active=${active}`, {});
+
+  getTransactions = (page = 1, pageSize = 50, status?: string) => {
+    let p = new HttpParams().set('page', page).set('pageSize', pageSize);
+    if (status) p = p.set('status', status);
+    return this.http.get<POSTransactionSummary[]>(`${this.base}/omnichannel/transactions`, { params: p });
+  };
+  getTransaction    = (id: string) => this.http.get<POSTransaction>(`${this.base}/omnichannel/transactions/${id}`);
+  createTransaction = (r: any) => this.http.post<POSTransaction>(`${this.base}/omnichannel/transactions`, r);
+  voidTransaction          = (id: string) => this.http.post(`${this.base}/omnichannel/transactions/${id}/void`, {});
+  updateFulfillmentStatus  = (id: string, fulfillmentStatus: string) =>
+    this.http.patch(`${this.base}/omnichannel/transactions/${id}/fulfillment`, { fulfillmentStatus });
+  createOnlineOrder = (r: any) => this.http.post<POSTransaction>(`${this.base}/omnichannel/orders/online`, r);
+
+  getPromotions    = () => this.http.get<Promotion[]>(`${this.base}/omnichannel/promotions`);
+  createPromotion  = (r: any) => this.http.post<Promotion>(`${this.base}/omnichannel/promotions`, r);
+  updatePromotion  = (id: string, r: any) => this.http.put<Promotion>(`${this.base}/omnichannel/promotions/${id}`, r);
+  togglePromotion  = (id: string, active: boolean) =>
+    this.http.post(`${this.base}/omnichannel/promotions/${id}/toggle?active=${active}`, {});
+
+  getCoupons        = (promotionId?: string) => {
+    let p = new HttpParams();
+    if (promotionId) p = p.set('promotionId', promotionId);
+    return this.http.get<Coupon[]>(`${this.base}/omnichannel/coupons`, { params: p });
+  };
+  createCoupon      = (r: any) => this.http.post<Coupon>(`${this.base}/omnichannel/coupons`, r);
+  bulkCreateCoupons = (r: any) => this.http.post<Coupon[]>(`${this.base}/omnichannel/coupons/bulk`, r);
+  validateCoupon    = (r: { code: string; orderAmount: number }) =>
+    this.http.post<CouponValidationResult>(`${this.base}/omnichannel/coupons/validate`, r);
+  deactivateCoupon  = (id: string) => this.http.post(`${this.base}/omnichannel/coupons/${id}/deactivate`, {});
+
+  getRetailSummary = (from?: string, to?: string) => {
+    let p = new HttpParams();
+    if (from) p = p.set('from', from);
+    if (to)   p = p.set('to', to);
+    return this.http.get<RetailSummary>(`${this.base}/omnichannel/summary`, { params: p });
   };
 
   exportData = (entityType: string, fileFormat: string) =>

@@ -276,7 +276,9 @@ export class AppComponent {
       items: [
         { label: 'Import / Export', route: '/data-management', icon: '🔄' },
         { label: 'Batch Jobs',      route: '/batch-jobs',      icon: '⚙️' }
-      ] }
+      ] },
+    { label: 'OmniChannel', icon: '🌐',
+      items: [{ label: 'Orders & Promotions', route: '/omnichannel', icon: '🛒' }] }
   ];
 
   constructor(

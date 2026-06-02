@@ -47,5 +47,10 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./modules/batch-jobs/batch-jobs.component').then(m => m.BatchJobsComponent)
   },
+  {
+    path: 'omnichannel',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/omnichannel/omnichannel.component').then(m => m.OmniChannelComponent)
+  },
   { path: '**', redirectTo: 'dashboard' }
 ];

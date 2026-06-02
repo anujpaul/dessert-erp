@@ -156,9 +156,8 @@ const CRON_PRESETS = [
 
     <div class="form-section-title">📂 Local File System Paths</div>
     <div class="path-hint-box">
-      💡 Paths must be accessible by the server process. Use absolute paths, e.g.
-      <code>C:\ERP\Imports\SalesOrders\Inbox</code> on Windows or
-      <code>/var/erp/imports/sales-orders/inbox</code> on Linux.
+      💡 Enter paths <strong>relative to the Azure File Share root</strong> (e.g. <code>imports/sales-orders/inbox</code>).
+      Folders are created automatically. Files are visible in Azure Storage Explorer under the <code>erp-files</code> share.
     </div>
 
     <!-- IMPORT paths -->
@@ -166,19 +165,19 @@ const CRON_PRESETS = [
       <div class="field">
         <label>Inbox Folder *</label>
         <input [(ngModel)]="form.localInboxPath" class="input"
-               placeholder="C:\ERP\Imports\SalesOrders\Inbox" />
-        <span class="field-hint">The job will pick up all .{{ form.fileFormat.toLowerCase() }} files placed here.</span>
+               placeholder="imports/sales-orders/inbox" />
+        <span class="field-hint">The job picks up all .{{ form.fileFormat.toLowerCase() }} files from here in the Azure File Share.</span>
       </div>
       <div class="field">
         <label>Processed Folder *</label>
         <input [(ngModel)]="form.localProcessedPath" class="input"
-               placeholder="C:\ERP\Imports\SalesOrders\Processed" />
+               placeholder="imports/sales-orders/processed" />
         <span class="field-hint">Successfully imported files are moved here.</span>
       </div>
       <div class="field">
         <label>Error Folder *</label>
         <input [(ngModel)]="form.localErrorPath" class="input"
-               placeholder="C:\ERP\Imports\SalesOrders\Errors" />
+               placeholder="imports/sales-orders/errors" />
         <span class="field-hint">Files that fail processing are moved here for review.</span>
       </div>
     </div>
@@ -188,7 +187,7 @@ const CRON_PRESETS = [
       <div class="field">
         <label>Export Folder *</label>
         <input [(ngModel)]="form.localExportPath" class="input"
-               placeholder="C:\ERP\Exports\SalesOrders" />
+               placeholder="exports/sales-orders" />
         <span class="field-hint">Generated export files will be written here.</span>
       </div>
       <div class="field">
@@ -386,11 +385,11 @@ export class BatchJobsComponent implements OnInit, OnDestroy {
       .replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
 
     if (this.isImportJob()) {
-      this.form.localInboxPath     = `C:\\ERP\\Imports\\${entity}\\Inbox`;
-      this.form.localProcessedPath = `C:\\ERP\\Imports\\${entity}\\Processed`;
-      this.form.localErrorPath     = `C:\\ERP\\Imports\\${entity}\\Errors`;
+      this.form.localInboxPath     = `imports/${entity}/inbox`;
+      this.form.localProcessedPath = `imports/${entity}/processed`;
+      this.form.localErrorPath     = `imports/${entity}/errors`;
     } else {
-      this.form.localExportPath = `C:\\ERP\\Exports\\${entity}`;
+      this.form.localExportPath = `exports/${entity}s`;
     }
   }
 
