@@ -70,8 +70,12 @@ export class ApiService {
   getFiscalYears = () => this.http.get<FiscalYear[]>(`${this.base}/gl/fiscal-years`);
   createFiscalYear = (r: any) => this.http.post<FiscalYear>(`${this.base}/gl/fiscal-years`, r);
   closeFiscalYear = (id: string) => this.http.post<void>(`${this.base}/gl/fiscal-years/${id}/close`, {});
-  getPeriods = (fyId: string) => this.http.get<FiscalPeriod[]>(`${this.base}/gl/fiscal-years/${fyId}/periods`);
-  closePeriod = (id: string) => this.http.post<void>(`${this.base}/gl/periods/${id}/close`, {});
+  getPeriods      = (fyId: string) => this.http.get<FiscalPeriod[]>(`${this.base}/gl/fiscal-years/${fyId}/periods`);
+  createPeriod    = (fyId: string, r: any) => this.http.post<FiscalPeriod>(`${this.base}/gl/fiscal-years/${fyId}/periods`, r);
+  generatePeriods = (fyId: string, type: string) => this.http.post<FiscalPeriod[]>(`${this.base}/gl/fiscal-years/${fyId}/periods/generate`, { type });
+  updatePeriod    = (fyId: string, pid: string, r: any) => this.http.put<FiscalPeriod>(`${this.base}/gl/fiscal-years/${fyId}/periods/${pid}`, r);
+  deletePeriod    = (fyId: string, pid: string) => this.http.delete<void>(`${this.base}/gl/fiscal-years/${fyId}/periods/${pid}`);
+  closePeriod     = (id: string) => this.http.post<void>(`${this.base}/gl/periods/${id}/close`, {});
   getCurrentPeriod = () => this.http.get<FiscalPeriod>(`${this.base}/gl/periods/current`);
 
   getAccountTypes = () => this.http.get<AccountType[]>(`${this.base}/gl/account-types`);
@@ -315,6 +319,7 @@ export class ApiService {
   getPriceAgreementSuggestions = (productId: string) =>
     this.http.get<any[]>(`${this.base}/price-agreements/suggestions?productId=${productId}`);
 
+  // ── Data Management ──────────────────────────────────────────────────────
   exportData = (entityType: string, fileFormat: string) =>
     this.http.get(`${this.base}/dm/export?entityType=${entityType}&fileFormat=${fileFormat}`,
       { responseType: 'blob', observe: 'response' });
@@ -322,4 +327,11 @@ export class ApiService {
   downloadTemplate = (entityType: string, fileFormat: string) =>
     this.http.get(`${this.base}/dm/template?entityType=${entityType}&fileFormat=${fileFormat}`,
       { responseType: 'blob', observe: 'response' });
+
+  importFile = (entityType: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return this.http.post<any>(`${this.base}/dm/import?entityType=${entityType}`, fd);
+  };
+
 }

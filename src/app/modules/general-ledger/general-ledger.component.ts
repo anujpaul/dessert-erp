@@ -30,7 +30,7 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial';
   <!-- ── FISCAL CALENDAR ── -->
   <div *ngIf="activeTab === 'fiscal'" class="tab-content">
     <div class="toolbar">
-      <button class="btn-primary" (click)="showCreateFY = true">+ New Fiscal Year</button>
+      <button class="btn-primary" (click)="showCreateFY = !showCreateFY">+ New Fiscal Year</button>
     </div>
 
     <!-- Create FY Form -->
@@ -42,26 +42,32 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial';
         <div class="form-field"><label>Start Date</label><input type="date" [(ngModel)]="fyForm.startDate" /></div>
         <div class="form-field"><label>End Date</label><input type="date" [(ngModel)]="fyForm.endDate" /></div>
       </div>
+      <p style="font-size:.82rem;color:#6b7280;margin:.25rem 0 .75rem">
+        Periods are <strong>not</strong> auto-created. After saving, use "+ Add Period" or "Generate" to define them.
+      </p>
       <div class="form-actions">
-        <button class="btn-primary" (click)="createFY()">Create</button>
+        <button class="btn-primary" (click)="createFY()">Create Fiscal Year</button>
         <button class="btn-ghost" (click)="showCreateFY = false">Cancel</button>
       </div>
     </div>
 
-    <!-- FY List -->
+    <!-- FY List + Period Detail split -->
     <div class="split">
+      <!-- LEFT: FY list -->
       <div class="list-panel">
         <div *ngFor="let fy of fiscalYears" class="list-row" [class.active]="selectedFY?.id === fy.id" (click)="selectFY(fy)">
           <div class="row-main">
             <strong>{{ fy.name }}</strong>
             <span class="badge" [class]="'badge-' + fy.status.toLowerCase()">{{ fy.status }}</span>
           </div>
-          <div class="row-sub">{{ fy.startDate | date:'MMM d, y' }} → {{ fy.endDate | date:'MMM d, y' }} · {{ fy.periodCount }} periods</div>
+          <div class="row-sub">{{ fy.startDate | date:'MMM d, y' }} → {{ fy.endDate | date:'MMM d, y' }} · {{ fy.periodCount }} period(s)</div>
         </div>
         <div *ngIf="!fiscalYears.length" class="empty">No fiscal years.</div>
       </div>
 
+      <!-- RIGHT: Period Management -->
       <div class="detail-panel" *ngIf="selectedFY">
+        <!-- FY header -->
         <div class="detail-header">
           <div class="detail-title">{{ selectedFY.name }}</div>
           <button *ngIf="selectedFY.status === 'Open'" class="btn-danger-sm" (click)="closeFY(selectedFY.id)">Close Year</button>
@@ -70,24 +76,95 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial';
           <div class="info-item"><span class="info-label">Status</span><span class="badge" [class]="'badge-' + selectedFY.status.toLowerCase()">{{ selectedFY.status }}</span></div>
           <div class="info-item"><span class="info-label">Start</span><span>{{ selectedFY.startDate | date:'mediumDate' }}</span></div>
           <div class="info-item"><span class="info-label">End</span><span>{{ selectedFY.endDate | date:'mediumDate' }}</span></div>
-          <div class="info-item"><span class="info-label">Periods</span><span>{{ selectedFY.periodCount }}</span></div>
+          <div class="info-item"><span class="info-label">Periods</span><span>{{ periods.length }}</span></div>
         </div>
-        <div class="sub-section-title">Periods</div>
-        <table class="data-table">
-          <thead><tr><th>#</th><th>Name</th><th>Start</th><th>End</th><th>Status</th><th></th></tr></thead>
+
+        <!-- Period toolbar -->
+        <div class="sub-section-title" style="display:flex;align-items:center;justify-content:space-between;margin-top:1rem">
+          <span>Periods</span>
+          <div style="display:flex;gap:.5rem" *ngIf="selectedFY.status === 'Open'">
+            <!-- Generate dropdown -->
+            <div style="position:relative">
+              <button class="btn-ghost btn-sm" (click)="showGenerateMenu = !showGenerateMenu">⚡ Generate ▾</button>
+              <div *ngIf="showGenerateMenu" style="position:absolute;right:0;top:100%;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;z-index:10;min-width:160px;box-shadow:0 4px 12px rgba(0,0,0,.15)">
+                <button class="gen-menu-item" (click)="generatePeriods('Monthly')">📅 Monthly (12)</button>
+                <button class="gen-menu-item" (click)="generatePeriods('Quarterly')">📊 Quarterly (4)</button>
+                <button class="gen-menu-item" (click)="generatePeriods('4-4-5')">🗓 4-4-5 Retail (12)</button>
+              </div>
+            </div>
+            <button class="btn-primary btn-sm" (click)="showAddPeriod = !showAddPeriod">+ Add Period</button>
+          </div>
+        </div>
+
+        <!-- Add Period inline form -->
+        <div *ngIf="showAddPeriod && selectedFY.status === 'Open'" class="form-card" style="margin:0 0 .75rem;padding:.75rem 1rem">
+          <div class="form-grid" style="grid-template-columns:2fr 1fr 1fr">
+            <div class="form-field">
+              <label>Period Name</label>
+              <input [(ngModel)]="periodForm.name" placeholder="e.g. January 2027" />
+            </div>
+            <div class="form-field">
+              <label>Start Date</label>
+              <input type="date" [(ngModel)]="periodForm.startDate" />
+            </div>
+            <div class="form-field">
+              <label>End Date</label>
+              <input type="date" [(ngModel)]="periodForm.endDate" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary btn-sm" (click)="addPeriod()">Save Period</button>
+            <button class="btn-ghost btn-sm" (click)="showAddPeriod = false">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Period table -->
+        <table class="data-table" *ngIf="periods.length">
+          <thead>
+            <tr><th>#</th><th>Name</th><th>Start</th><th>End</th><th>Days</th><th>Status</th><th></th></tr>
+          </thead>
           <tbody>
             <tr *ngFor="let p of periods">
               <td>{{ p.periodNumber }}</td>
-              <td>{{ p.name }}</td>
-              <td>{{ p.startDate | date:'MMM d' }}</td>
-              <td>{{ p.endDate | date:'MMM d' }}</td>
+              <td>
+                <!-- Inline edit -->
+                <span *ngIf="editingPeriodId !== p.id">{{ p.name }}</span>
+                <input *ngIf="editingPeriodId === p.id" class="inline-edit-input" [(ngModel)]="editPeriodForm.name" />
+              </td>
+              <td>
+                <span *ngIf="editingPeriodId !== p.id">{{ p.startDate | date:'MMM d, y' }}</span>
+                <input *ngIf="editingPeriodId === p.id" type="date" class="inline-edit-input" [(ngModel)]="editPeriodForm.startDate" />
+              </td>
+              <td>
+                <span *ngIf="editingPeriodId !== p.id">{{ p.endDate | date:'MMM d, y' }}</span>
+                <input *ngIf="editingPeriodId === p.id" type="date" class="inline-edit-input" [(ngModel)]="editPeriodForm.endDate" />
+              </td>
+              <td>{{ dayCount(p.startDate, p.endDate) }}</td>
               <td><span class="badge" [class]="'badge-' + p.status.toLowerCase()">{{ p.status }}</span></td>
-              <td><button *ngIf="p.status === 'Open'" class="btn-xs" (click)="closePeriod(p.id)">Close</button></td>
+              <td style="display:flex;gap:.3rem;flex-wrap:nowrap">
+                <ng-container *ngIf="p.status === 'Open' && selectedFY.status === 'Open'">
+                  <!-- Editing row -->
+                  <ng-container *ngIf="editingPeriodId === p.id">
+                    <button class="btn-xs btn-primary" (click)="savePeriodEdit(p)">✓</button>
+                    <button class="btn-xs" (click)="editingPeriodId = null">✕</button>
+                  </ng-container>
+                  <!-- Normal row -->
+                  <ng-container *ngIf="editingPeriodId !== p.id">
+                    <button class="btn-xs" (click)="startEditPeriod(p)" title="Edit">✏️</button>
+                    <button class="btn-xs" (click)="closePeriod(p.id)" title="Close period">🔒</button>
+                    <button class="btn-xs btn-danger-xs" (click)="deletePeriod(p)" title="Delete">🗑</button>
+                  </ng-container>
+                </ng-container>
+              </td>
             </tr>
           </tbody>
         </table>
+        <div *ngIf="!periods.length" class="empty" style="margin-top:.5rem">
+          No periods defined yet. Use "+ Add Period" to add one manually, or "⚡ Generate" to auto-fill.
+        </div>
       </div>
-      <div class="detail-panel empty-detail" *ngIf="!selectedFY">Select a fiscal year to view periods.</div>
+
+      <div class="detail-panel empty-detail" *ngIf="!selectedFY">Select a fiscal year to manage its periods.</div>
     </div>
   </div>
 
@@ -304,6 +381,13 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial';
     .btn-danger-sm { background: #fee2e2; color: #dc2626; border: none; padding: .35rem .75rem; border-radius: 5px; cursor: pointer; font-size: .8rem; }
     .btn-xs { padding: .2rem .5rem; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 4px; cursor: pointer; font-size: .75rem; }
     .btn-red { border-color: #fecaca; color: #dc2626; }
+    .btn-sm { padding: .35rem .75rem; font-size: .8rem; }
+    .btn-danger-xs { border-color: #fecaca; color: #dc2626; background: #fff5f5; }
+
+    .gen-menu-item { display: block; width: 100%; padding: .5rem .85rem; border: none; background: none; text-align: left; cursor: pointer; font-size: .83rem; color: #0f172a; white-space: nowrap; }
+    .gen-menu-item:hover { background: #eff6ff; }
+
+    .inline-edit-input { padding: .25rem .4rem; border: 1px solid #93c5fd; border-radius: 4px; font-size: .85rem; width: 100%; box-sizing: border-box; }
 
     .form-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; }
     .form-title { font-weight: 600; font-size: .95rem; color: #0f172a; margin-bottom: 1rem; }
@@ -375,6 +459,13 @@ export class GeneralLedgerComponent implements OnInit {
   showCreateFY = false;
   fyForm = { name: '', description: '', startDate: '', endDate: '' };
 
+  // Period management
+  showAddPeriod = false;
+  showGenerateMenu = false;
+  periodForm = { name: '', startDate: '', endDate: '' };
+  editingPeriodId: string | null = null;
+  editPeriodForm = { name: '', startDate: '', endDate: '' };
+
   // COA
   accounts: Account[] = [];
   accountTypes: AccountType[] = [];
@@ -419,22 +510,99 @@ export class GeneralLedgerComponent implements OnInit {
 
   selectFY(fy: FiscalYear) {
     this.selectedFY = fy;
+    this.showAddPeriod = false;
+    this.showGenerateMenu = false;
+    this.editingPeriodId = null;
     this.api.getPeriods(fy.id).subscribe(d => this.periods = d);
   }
 
   createFY() {
-    this.api.createFiscalYear({ ...this.fyForm, autoGeneratePeriods: true }).subscribe(d => {
+    this.api.createFiscalYear({ ...this.fyForm }).subscribe(d => {
       this.fiscalYears = [d, ...this.fiscalYears];
       this.showCreateFY = false;
       this.fyForm = { name: '', description: '', startDate: '', endDate: '' };
-      this.loadAllPeriods();
+      this.selectFY(d);
     });
+  }
+
+  addPeriod() {
+    if (!this.selectedFY) return;
+    this.api.createPeriod(this.selectedFY.id, this.periodForm).subscribe({
+      next: (p: FiscalPeriod) => {
+        this.periods = [...this.periods, p].sort((a, b) => a.periodNumber - b.periodNumber);
+        this.updateFYPeriodCount();
+        this.showAddPeriod = false;
+        this.periodForm = { name: '', startDate: '', endDate: '' };
+        this.loadAllPeriods();
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to add period.')
+    });
+  }
+
+  generatePeriods(type: string) {
+    if (!this.selectedFY) return;
+    this.showGenerateMenu = false;
+    if (!confirm('This will replace all existing periods with ' + type + ' periods. Continue?')) return;
+    this.api.generatePeriods(this.selectedFY.id, type).subscribe({
+      next: (periods: FiscalPeriod[]) => {
+        this.periods = periods.sort((a, b) => a.periodNumber - b.periodNumber);
+        this.updateFYPeriodCount();
+        this.loadAllPeriods();
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to generate periods.')
+    });
+  }
+
+  startEditPeriod(p: FiscalPeriod) {
+    this.editingPeriodId = p.id;
+    this.editPeriodForm = {
+      name: p.name,
+      startDate: p.startDate.split('T')[0],
+      endDate: p.endDate.split('T')[0]
+    };
+  }
+
+  savePeriodEdit(p: FiscalPeriod) {
+    if (!this.selectedFY) return;
+    this.api.updatePeriod(this.selectedFY.id, p.id, this.editPeriodForm).subscribe({
+      next: (updated: FiscalPeriod) => {
+        this.periods = this.periods.map(x => x.id === p.id ? updated : x);
+        this.editingPeriodId = null;
+        this.loadAllPeriods();
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to update period.')
+    });
+  }
+
+  deletePeriod(p: FiscalPeriod) {
+    if (!this.selectedFY) return;
+    if (!confirm('Delete period "' + p.name + '"? This cannot be undone.')) return;
+    this.api.deletePeriod(this.selectedFY.id, p.id).subscribe({
+      next: () => {
+        this.periods = this.periods.filter(x => x.id !== p.id);
+        this.updateFYPeriodCount();
+        this.loadAllPeriods();
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to delete period.')
+    });
+  }
+
+  private updateFYPeriodCount() {
+    if (this.selectedFY) {
+      this.selectedFY = { ...this.selectedFY, periodCount: this.periods.length };
+      this.fiscalYears = this.fiscalYears.map(y => y.id === this.selectedFY!.id ? this.selectedFY! : y);
+    }
+  }
+
+  dayCount(start: string, end: string): number {
+    const ms = new Date(end).getTime() - new Date(start).getTime();
+    return Math.round(ms / 86400000) + 1;
   }
 
   closeFY(id: string) {
     this.api.closeFiscalYear(id).subscribe(() => this.api.getFiscalYears().subscribe(d => {
       this.fiscalYears = d;
-      this.selectedFY = d.find(y => y.id === id) || null;
+      this.selectedFY = d.find((y: FiscalYear) => y.id === id) ?? null;
     }));
   }
 
@@ -454,11 +622,11 @@ export class GeneralLedgerComponent implements OnInit {
 
   loadAllPeriods() {
     this.api.getFiscalYears().subscribe(years => {
-      const calls = years.map(y => this.api.getPeriods(y.id));
+      const calls = years.map((y: FiscalYear) => this.api.getPeriods(y.id));
       if (!calls.length) return;
       let results: FiscalPeriod[] = [];
       let done = 0;
-      calls.forEach(c => c.subscribe(p => {
+      calls.forEach((c: any) => c.subscribe((p: FiscalPeriod[]) => {
         results = [...results, ...p];
         done++;
         if (done === calls.length) this.allPeriods = results.sort((a, b) => a.name.localeCompare(b.name));
