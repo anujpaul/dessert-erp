@@ -310,23 +310,34 @@ export interface Vendor {
   bankAccountName?: string; bankAccountNumber?: string;
   status: string; createdAt: string;
 }
-export type POStatus = 'Draft' | 'Sent' | 'PartiallyReceived' | 'FullyReceived' | 'Invoiced' | 'Closed' | 'Cancelled';
+export type POStatus = 'Draft' | 'Sent' | 'PartiallyReceived' | 'FullyReceived' | 'Closed' | 'Cancelled';
+export type POInvoiceStatus = 'NotInvoiced' | 'PartiallyInvoiced' | 'FullyInvoiced';
 export interface PurchaseOrderLine {
   id: string; productVariantId: string; productCode: string;
   description: string; unitOfMeasure: string;
   orderedQty: number; receivedQty: number; unitCost: number; taxRate: number;
-  lineTotal: number; isFullyReceived: boolean;
+  lineTotal: number; isFullyReceived: boolean; outstandingQty: number;
 }
 export interface PurchaseOrderSummary {
   id: string; poNumber: string; vendorId: string; vendorName: string;
   orderDate: string; expectedDate?: string;
-  status: POStatus; grandTotal: number; lineCount: number; createdAt: string;
+  status: POStatus; invoiceStatus: POInvoiceStatus;
+  grandTotal: number; invoicedAmount: number; lineCount: number; createdAt: string;
 }
 export interface PurchaseOrder {
   id: string; poNumber: string; vendorId: string; vendorName: string;
   orderDate: string; expectedDate?: string; description: string; currency: string;
-  status: POStatus; subTotal: number; taxTotal: number; grandTotal: number;
-  apInvoiceId?: string; createdAt: string; lines: PurchaseOrderLine[];
+  status: POStatus; invoiceStatus: POInvoiceStatus;
+  subTotal: number; taxTotal: number; grandTotal: number;
+  invoicedAmount: number; canReceive: boolean;
+  createdAt: string; lines: PurchaseOrderLine[];
+}
+export interface ReceiptLine {
+  id: string; purchaseOrderLineId: string; productCode: string; description: string; qty: number;
+}
+export interface Receipt {
+  id: string; receiptNumber: string; receivedDate: string; notes?: string; createdAt: string;
+  lines: ReceiptLine[];
 }
 export interface APInvoice {
   id: string; invoiceNumber: string; vendorId: string; vendorName: string;

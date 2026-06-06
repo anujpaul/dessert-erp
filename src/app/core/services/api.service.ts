@@ -151,7 +151,10 @@ export class ApiService {
   removePOLine = (id: string, lineId: string) =>
     this.http.delete<void>(`${this.base}/ap/purchase-orders/${id}/lines/${lineId}`);
   sendPurchaseOrder = (id: string) => this.http.post<void>(`${this.base}/ap/purchase-orders/${id}/send`, {});
-  receiveGoods = (id: string, r: any) => this.http.post<void>(`${this.base}/ap/purchase-orders/${id}/receive`, r);
+  recordReceipt = (id: string, req: { lines: { lineId: string; qty: number }[]; receivedDate?: string; notes?: string }) =>
+    this.http.post<any>(`${this.base}/ap/purchase-orders/${id}/receipts`, req);
+  getPOReceipts = (id: string) => this.http.get<any[]>(`${this.base}/ap/purchase-orders/${id}/receipts`);
+  closePurchaseOrder = (id: string) => this.http.post<void>(`${this.base}/ap/purchase-orders/${id}/close`, {});
   cancelPurchaseOrder = (id: string) => this.http.post<void>(`${this.base}/ap/purchase-orders/${id}/cancel`, {});
   generateAPInvoice = (poId: string, ref: string) =>
     this.http.post<APInvoice>(`${this.base}/ap/purchase-orders/${poId}/generate-invoice?vendorInvoiceRef=${ref}`, {});
@@ -323,6 +326,7 @@ export class ApiService {
   exportData = (entityType: string, fileFormat: string) =>
     this.http.get(`${this.base}/dm/export?entityType=${entityType}&fileFormat=${fileFormat}`,
       { responseType: 'blob', observe: 'response' });
+
 
   downloadTemplate = (entityType: string, fileFormat: string) =>
     this.http.get(`${this.base}/dm/template?entityType=${entityType}&fileFormat=${fileFormat}`,

@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { Vendor, PurchaseOrderSummary, PurchaseOrder, APInvoice, APAgingReport, VariantLookup } from '../../core/models/erp.models';
+import { Vendor, PurchaseOrderSummary, PurchaseOrder, Receipt, APInvoice, APAgingReport, VariantLookup } from '../../core/models/erp.models';
 
 type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
 
@@ -30,7 +30,6 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
       <button class="btn-primary" (click)="openCreateVend()">+ New Vendor</button>
     </div>
 
-    <!-- Create / Edit vendor form -->
     <div *ngIf="showVendForm" class="form-card">
       <div class="form-title">{{ editVend ? 'Edit Vendor' : 'New Vendor' }}</div>
       <div class="form-grid">
@@ -122,9 +121,15 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     <div class="split">
       <div class="list-panel">
         <div *ngFor="let o of purchaseOrders" class="list-row" [class.active]="selectedPO?.id === o.id" (click)="selectPO(o.id)">
-          <div class="row-main"><strong>{{ o.poNumber }}</strong><span class="badge" [class]="'badge-po-' + o.status.toLowerCase()">{{ o.status }}</span></div>
+          <div class="row-main">
+            <strong>{{ o.poNumber }}</strong>
+            <span class="badge" [class]="'badge-po-' + o.status.toLowerCase()">{{ o.status }}</span>
+          </div>
           <div class="row-sub">{{ o.vendorName }}</div>
-          <div class="row-amounts">{{ o.orderDate | date:'MMM d, y' }} · {{ o.grandTotal | currency }}</div>
+          <div class="row-amounts">
+            {{ o.orderDate | date:'MMM d, y' }} · {{ o.grandTotal | currency }}
+            <span *ngIf="o.invoiceStatus !== 'NotInvoiced'" class="badge ml" [class]="'badge-inv-' + o.invoiceStatus.toLowerCase()">{{ o.invoiceStatus }}</span>
+          </div>
         </div>
         <div *ngIf="!purchaseOrders.length" class="empty">No purchase orders.</div>
       </div>
@@ -133,29 +138,44 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
         <div class="detail-header">
           <div class="detail-title">{{ selectedPO.poNumber }}</div>
           <div class="action-row">
-            <button *ngIf="selectedPO.status === 'Draft'" class="btn-primary-sm" (click)="sendPO()">Send to Vendor</button>
-            <button *ngIf="['Sent','PartiallyReceived'].includes(selectedPO.status)" class="btn-primary-sm" (click)="showReceive = true">Receive Goods</button>
-            <button *ngIf="['FullyReceived','PartiallyReceived'].includes(selectedPO.status)" class="btn-primary-sm" (click)="generateAPInv()">Generate Invoice</button>
-            <button *ngIf="['Draft','Sent'].includes(selectedPO.status)" class="btn-danger-sm" (click)="cancelPO()">Cancel</button>
+            <!-- Send: only Draft -->
+            <button *ngIf="selectedPO.status === 'Draft'" class="btn-primary-sm" (click)="sendPO()">📤 Send to Vendor</button>
+            <!-- Receive: backend canReceive flag — works regardless of invoice state -->
+            <button *ngIf="selectedPO.canReceive" class="btn-primary-sm" (click)="openReceiveForm()">📥 Receive Goods</button>
+            <!-- Invoice: any received qty not yet fully invoiced -->
+            <button *ngIf="hasReceivableToInvoice()" class="btn-primary-sm" (click)="generateAPInv()">🧾 Generate Invoice</button>
+            <!-- Close: once fully invoiced -->
+            <button *ngIf="selectedPO.invoiceStatus === 'FullyInvoiced' && selectedPO.status !== 'Closed'" class="btn-ghost-sm" (click)="closePO()">🔒 Close PO</button>
+            <!-- Cancel: only Draft/Sent with no invoices -->
+            <button *ngIf="['Draft','Sent'].includes(selectedPO.status) && selectedPO.invoiceStatus === 'NotInvoiced'" class="btn-danger-sm" (click)="cancelPO()">✕ Cancel</button>
           </div>
         </div>
+
+        <!-- PO summary info -->
         <div class="info-grid">
           <div class="info-item"><span class="info-label">Vendor</span><span>{{ selectedPO.vendorName }}</span></div>
-          <div class="info-item"><span class="info-label">Status</span><span class="badge" [class]="'badge-po-' + selectedPO.status.toLowerCase()">{{ selectedPO.status }}</span></div>
+          <div class="info-item">
+            <span class="info-label">Receive Status</span>
+            <span class="badge" [class]="'badge-po-' + selectedPO.status.toLowerCase()">{{ selectedPO.status }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Invoice Status</span>
+            <span class="badge" [class]="'badge-inv-' + selectedPO.invoiceStatus.toLowerCase()">{{ selectedPO.invoiceStatus }}</span>
+          </div>
           <div class="info-item"><span class="info-label">Order Date</span><span>{{ selectedPO.orderDate | date:'mediumDate' }}</span></div>
           <div class="info-item"><span class="info-label">Expected</span><span>{{ selectedPO.expectedDate ? (selectedPO.expectedDate | date:'mediumDate') : '—' }}</span></div>
-          <div class="info-item"><span class="info-label">Sub Total</span><span>{{ selectedPO.subTotal | currency }}</span></div>
-          <div class="info-item"><span class="info-label">Grand Total</span><span><strong>{{ selectedPO.grandTotal | currency }}</strong></span></div>
+          <div class="info-item"><span class="info-label">PO Value</span><span><strong>{{ selectedPO.grandTotal | currency }}</strong></span></div>
+          <div class="info-item"><span class="info-label">Invoiced So Far</span><span [class.ok]="selectedPO.invoicedAmount > 0">{{ selectedPO.invoicedAmount | currency }}</span></div>
+          <div class="info-item"><span class="info-label">Uninvoiced</span><span [class.warn]="(selectedPO.grandTotal - selectedPO.invoicedAmount) > 0">{{ (selectedPO.grandTotal - selectedPO.invoicedAmount) | currency }}</span></div>
         </div>
 
-        <!-- Add line (Draft only) — variant picker -->
+        <!-- Add line (Draft only) -->
         <div *ngIf="selectedPO.status === 'Draft'" class="form-card">
           <div class="form-title" style="font-size:.85rem">Add Line — Search Product</div>
           <div class="variant-search-row">
             <input [(ngModel)]="variantQuery" (input)="searchVariants()" placeholder="Search by SKU, name, color…" class="search-input" style="flex:1" />
             <span *ngIf="variantResults.length" class="result-count">{{ variantResults.length }} results</span>
           </div>
-          <!-- Variant results -->
           <div *ngIf="variantResults.length" class="variant-results">
             <div *ngFor="let v of variantResults" class="variant-row"
                  [class.selected]="addLine.productVariantId === v.variantId"
@@ -172,7 +192,6 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
               </div>
             </div>
           </div>
-          <!-- Filled line form after selecting a variant -->
           <div *ngIf="addLine.productVariantId" class="form-grid" style="grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); margin-top:.75rem">
             <div class="form-field"><label>SKU</label><input [value]="addLine.productCode" readonly class="readonly" /></div>
             <div class="form-field"><label>Description</label><input [(ngModel)]="addLine.description" /></div>
@@ -187,18 +206,38 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
           </div>
         </div>
 
-        <!-- Receive form -->
+        <!-- ── Receive Goods form ── -->
         <div *ngIf="showReceive" class="form-card">
-          <div class="form-title">Receive Goods</div>
+          <div class="form-title">📥 Record Goods Receipt</div>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr; margin-bottom:.75rem">
+            <div class="form-field">
+              <label>Received Date</label>
+              <input type="date" [(ngModel)]="receiveDate" />
+            </div>
+            <div class="form-field">
+              <label>Notes / GRN Reference</label>
+              <input [(ngModel)]="receiveNotes" placeholder="Optional notes…" />
+            </div>
+          </div>
           <table class="data-table">
-            <thead><tr><th>SKU</th><th>Description</th><th class="num">Ordered</th><th class="num">Rcvd</th><th class="num">Receive Now</th></tr></thead>
+            <thead><tr>
+              <th>SKU</th><th>Description</th>
+              <th class="num">Ordered</th><th class="num">Received</th>
+              <th class="num">Outstanding</th><th class="num">Receive Now</th>
+            </tr></thead>
             <tbody>
-              <tr *ngFor="let l of selectedPO.lines; let i = index">
+              <tr *ngFor="let l of selectedPO.lines; let i = index" [class.fully-rcvd]="l.isFullyReceived">
                 <td><code>{{ l.productCode }}</code></td>
                 <td>{{ l.description }}</td>
                 <td class="num">{{ l.orderedQty }}</td>
-                <td class="num">{{ l.receivedQty }}</td>
-                <td class="num"><input type="number" [(ngModel)]="receiveQtys[i]" min="0" [max]="l.orderedQty - l.receivedQty" style="width:80px;padding:.3rem;border:1px solid #d1d5db;border-radius:4px;text-align:right" /></td>
+                <td class="num" [class.ok]="l.isFullyReceived" [class.warn]="!l.isFullyReceived && l.receivedQty > 0">{{ l.receivedQty }}</td>
+                <td class="num">{{ l.outstandingQty }}</td>
+                <td class="num">
+                  <input *ngIf="!l.isFullyReceived" type="number" [(ngModel)]="receiveQtys[i]"
+                         min="0" [max]="l.outstandingQty" step="0.01"
+                         style="width:80px;padding:.3rem;border:1px solid #d1d5db;border-radius:4px;text-align:right" />
+                  <span *ngIf="l.isFullyReceived" class="badge badge-ok">✓ Full</span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -208,21 +247,53 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
           </div>
         </div>
 
-        <div class="sub-section-title">Lines</div>
+        <!-- ── Lines table ── -->
+        <div class="sub-section-title">Order Lines</div>
         <table class="data-table">
-          <thead><tr><th>SKU</th><th>Description</th><th class="num">Ordered</th><th class="num">Received</th><th class="num">Unit Cost</th><th class="num">Total</th><th></th></tr></thead>
+          <thead><tr>
+            <th>SKU</th><th>Description</th>
+            <th class="num">Ordered</th><th class="num">Received</th><th class="num">Outstanding</th>
+            <th class="num">Unit Cost</th><th class="num">Total</th><th></th>
+          </tr></thead>
           <tbody>
             <tr *ngFor="let l of selectedPO.lines">
               <td><code>{{ l.productCode }}</code></td>
               <td>{{ l.description }}</td>
               <td class="num">{{ l.orderedQty }}</td>
               <td class="num" [class.warn]="!l.isFullyReceived && l.receivedQty > 0" [class.ok]="l.isFullyReceived">{{ l.receivedQty }}</td>
+              <td class="num" [class.warn]="l.outstandingQty > 0">{{ l.outstandingQty }}</td>
               <td class="num">{{ l.unitCost | currency }}</td>
               <td class="num"><strong>{{ l.lineTotal | currency }}</strong></td>
               <td><button *ngIf="selectedPO.status === 'Draft'" class="btn-xs btn-red" (click)="removePOLine(l.id)">✕</button></td>
             </tr>
           </tbody>
         </table>
+
+        <!-- ── Receipt History ── -->
+        <div class="sub-section-header" (click)="toggleReceiptHistory()">
+          <span class="sub-section-title" style="margin:0">📋 Receipt History ({{ receipts.length }})</span>
+          <span class="toggle-icon">{{ showReceiptHistory ? '▲' : '▼' }}</span>
+        </div>
+        <div *ngIf="showReceiptHistory">
+          <div *ngIf="!receipts.length" class="empty" style="padding:.75rem">No receipts recorded yet.</div>
+          <div *ngFor="let r of receipts" class="receipt-card">
+            <div class="receipt-header">
+              <strong>{{ r.receiptNumber }}</strong>
+              <span class="muted">{{ r.receivedDate | date:'mediumDate' }}</span>
+              <span *ngIf="r.notes" class="muted">· {{ r.notes }}</span>
+            </div>
+            <table class="data-table" style="margin-top:.5rem">
+              <thead><tr><th>SKU</th><th>Description</th><th class="num">Qty Received</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let rl of r.lines">
+                  <td><code>{{ rl.productCode }}</code></td>
+                  <td>{{ rl.description }}</td>
+                  <td class="num ok">{{ rl.qty }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
       <div class="detail-panel empty-detail" *ngIf="!selectedPO">Select a purchase order.</div>
     </div>
@@ -363,6 +434,7 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     .btn-primary:hover { background: #1e40af; }
     .btn-ghost { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; padding: .5rem 1rem; border-radius: 6px; cursor: pointer; font-size: .875rem; }
     .btn-primary-sm { background: #1d4ed8; color: #fff; border: none; padding: .35rem .75rem; border-radius: 5px; cursor: pointer; font-size: .8rem; }
+    .btn-ghost-sm { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; padding: .35rem .75rem; border-radius: 5px; cursor: pointer; font-size: .8rem; }
     .btn-danger-sm { background: #fee2e2; color: #dc2626; border: none; padding: .35rem .75rem; border-radius: 5px; cursor: pointer; font-size: .8rem; }
     .btn-xs { padding: .2rem .5rem; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 4px; cursor: pointer; font-size: .75rem; }
     .btn-red { border-color: #fecaca; color: #dc2626; }
@@ -382,7 +454,7 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     .list-row.active { background: #eff6ff; border-left: 3px solid #1d4ed8; }
     .row-main { display: flex; justify-content: space-between; align-items: center; margin-bottom: .2rem; font-size: .875rem; }
     .row-sub { font-size: .75rem; color: #64748b; }
-    .row-amounts { font-size: .75rem; color: #94a3b8; margin-top: .2rem; }
+    .row-amounts { font-size: .75rem; color: #94a3b8; margin-top: .2rem; display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
     .detail-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.25rem; overflow-y: auto; max-height: 80vh; }
     .empty-detail { display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: .875rem; min-height: 200px; }
     .detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
@@ -392,18 +464,26 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     .info-item { display: flex; flex-direction: column; gap: .2rem; font-size: .875rem; color: #0f172a; }
     .info-label { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; }
     .sub-section-title { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin: 1rem 0 .5rem; }
+    .sub-section-header { display: flex; justify-content: space-between; align-items: center; margin: 1rem 0 .5rem; cursor: pointer; padding: .35rem 0; border-bottom: 1px solid #f1f5f9; }
+    .sub-section-header:hover .sub-section-title { color: #475569; }
+    .toggle-icon { font-size: .75rem; color: #94a3b8; }
+    .receipt-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: .75rem 1rem; margin-bottom: .75rem; background: #fafafa; }
+    .receipt-header { display: flex; gap: .75rem; align-items: center; font-size: .875rem; flex-wrap: wrap; }
     .data-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
     .data-table th { background: #f8fafc; padding: .5rem .75rem; text-align: left; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #64748b; border-bottom: 1px solid #e2e8f0; }
     .data-table td { padding: .55rem .75rem; border-bottom: 1px solid #f1f5f9; }
     .data-table tr:hover td { background: #f8fafc; }
+    .data-table tr.fully-rcvd td { opacity: .6; }
     .total-row td { background: #f8fafc; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .neg { color: #dc2626; }
     .warn { color: #d97706; }
     .ok { color: #16a34a; }
     .mt { margin-top: 1rem; }
+    .ml { margin-left: .25rem; }
     .muted { color: #94a3b8; font-size: .75rem; }
     .badge { display: inline-block; padding: .2rem .5rem; border-radius: 4px; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .badge-ok { background: #dcfce7; color: #166534; }
     .badge-vend-active { background: #dcfce7; color: #166534; }
     .badge-vend-inactive { background: #f1f5f9; color: #475569; }
     .badge-vend-onhold { background: #fef9c3; color: #92400e; }
@@ -412,9 +492,11 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     .badge-po-sent { background: #dbeafe; color: #1d4ed8; }
     .badge-po-partiallyreceived { background: #fef9c3; color: #92400e; }
     .badge-po-fullyreceived { background: #dcfce7; color: #166534; }
-    .badge-po-invoiced { background: #e0f2fe; color: #0369a1; }
     .badge-po-closed { background: #f1f5f9; color: #475569; }
     .badge-po-cancelled { background: #fee2e2; color: #dc2626; }
+    .badge-inv-notinvoiced { background: #f1f5f9; color: #64748b; }
+    .badge-inv-partiallyinvoiced { background: #fef9c3; color: #92400e; }
+    .badge-inv-fullyinvoiced { background: #dcfce7; color: #166534; }
     .badge-apinv-draft { background: #f1f5f9; color: #475569; }
     .badge-apinv-approved { background: #dbeafe; color: #1d4ed8; }
     .badge-apinv-scheduled { background: #fef9c3; color: #92400e; }
@@ -423,7 +505,6 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     .badge-apinv-voided { background: #f1f5f9; color: #94a3b8; }
     .empty { padding: 2rem; text-align: center; color: #94a3b8; font-size: .875rem; }
     code { font-family: monospace; background: #f1f5f9; padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
-    /* Variant picker styles */
     .variant-search-row { display: flex; align-items: center; gap: .75rem; margin-bottom: .5rem; }
     .result-count { font-size: .75rem; color: #64748b; white-space: nowrap; }
     .variant-results { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: .75rem; max-height: 220px; overflow-y: auto; }
@@ -446,7 +527,7 @@ export class AccountsPayableComponent implements OnInit {
     { id: 'aging' as Tab, label: 'Aging Report', icon: '📅' },
   ];
 
-  poStatuses = ['Draft','Sent','PartiallyReceived','FullyReceived','Invoiced','Closed','Cancelled'];
+  poStatuses = ['Draft','Sent','PartiallyReceived','FullyReceived','Closed','Cancelled'];
 
   // Vendors
   vendors: Vendor[] = [];
@@ -463,6 +544,10 @@ export class AccountsPayableComponent implements OnInit {
   showCreatePO = false;
   showReceive = false;
   receiveQtys: number[] = [];
+  receiveDate: string = '';
+  receiveNotes: string = '';
+  receipts: Receipt[] = [];
+  showReceiptHistory = false;
   poForm = { vendorId:'', orderDate:'', expectedDate:'', description:'', currency:'USD' };
 
   // Variant picker for PO line
@@ -571,8 +656,22 @@ export class AccountsPayableComponent implements OnInit {
       this.selectedPO = d;
       this.receiveQtys = d.lines.map(() => 0);
       this.showReceive = false;
+      this.receipts = [];
+      this.showReceiptHistory = false;
       this.clearLineForm();
     });
+  }
+
+  toggleReceiptHistory() {
+    this.showReceiptHistory = !this.showReceiptHistory;
+    if (this.showReceiptHistory && this.selectedPO && !this.receipts.length) {
+      this.loadReceipts();
+    }
+  }
+
+  loadReceipts() {
+    if (!this.selectedPO) return;
+    this.api.getPOReceipts(this.selectedPO.id).subscribe(d => this.receipts = d);
   }
 
   createPO() {
@@ -640,30 +739,70 @@ export class AccountsPayableComponent implements OnInit {
     this.api.sendPurchaseOrder(this.selectedPO.id).subscribe(() => this.selectPO(this.selectedPO!.id));
   }
 
+  openReceiveForm() {
+    this.receiveDate = new Date().toISOString().split('T')[0];
+    this.receiveNotes = '';
+    this.receiveQtys = (this.selectedPO?.lines ?? []).map(() => 0);
+    this.showReceive = true;
+  }
+
+  /** True when there is received value not yet fully invoiced */
+  hasReceivableToInvoice(): boolean {
+    if (!this.selectedPO) return false;
+    const receivedHasValue = this.selectedPO.lines.some(l => l.receivedQty > 0);
+    return receivedHasValue && this.selectedPO.invoiceStatus !== 'FullyInvoiced';
+  }
+
   submitReceive() {
     if (!this.selectedPO) return;
-    const receipts = this.selectedPO.lines
-      .map((l, i) => ({ lineId: l.id, receivedQty: this.receiveQtys[i] || 0 }))
-      .filter(r => r.receivedQty > 0);
-    if (!receipts.length) return;
-    this.api.receiveGoods(this.selectedPO.id, receipts).subscribe(() => {
-      this.showReceive = false;
-      this.selectPO(this.selectedPO!.id);
+    const lines = this.selectedPO.lines
+      .map((l, i) => ({ lineId: l.id, qty: this.receiveQtys[i] || 0 }))
+      .filter(r => r.qty > 0);
+    if (!lines.length) return;
+    const req = {
+      lines,
+      receivedDate: this.receiveDate || undefined,
+      notes: this.receiveNotes || undefined
+    };
+    this.api.recordReceipt(this.selectedPO.id, req).subscribe({
+      next: () => {
+        this.showReceive = false;
+        this.receipts = [];          // force reload next time history is opened
+        this.showReceiptHistory = false;
+        this.selectPO(this.selectedPO!.id);
+        this.loadPOs();
+      },
+      error: err => alert('Error: ' + (err.error?.error ?? err.message))
     });
   }
 
   cancelPO() {
     if (!this.selectedPO || !confirm('Cancel this purchase order?')) return;
-    this.api.cancelPurchaseOrder(this.selectedPO.id).subscribe(() => this.selectPO(this.selectedPO!.id));
+    this.api.cancelPurchaseOrder(this.selectedPO.id).subscribe({
+      next: () => { this.selectPO(this.selectedPO!.id); this.loadPOs(); },
+      error: err => alert('Cannot cancel: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  closePO() {
+    if (!this.selectedPO || !confirm('Close this PO? No further receipts or invoices will be possible.')) return;
+    this.api.closePurchaseOrder(this.selectedPO.id).subscribe({
+      next: () => { this.selectPO(this.selectedPO!.id); this.loadPOs(); },
+      error: err => alert('Cannot close: ' + (err.error?.error ?? err.message))
+    });
   }
 
   generateAPInv() {
     if (!this.selectedPO) return;
-    const ref = prompt('Enter vendor invoice reference number:');
+    const ref = prompt('Enter vendor invoice reference number (e.g. INV-2026-001):');
     if (!ref) return;
-    this.api.generateAPInvoice(this.selectedPO.id, ref).subscribe(() => {
-      this.selectPO(this.selectedPO!.id);
-      this.api.getAPInvoices().subscribe(d => this.apInvoices = d);
+    this.api.generateAPInvoice(this.selectedPO.id, ref).subscribe({
+      next: () => {
+        this.selectPO(this.selectedPO!.id);
+        this.loadPOs();
+        this.api.getAPInvoices().subscribe(d => this.apInvoices = d);
+      },
+      error: err => alert('Invoice failed: ' + (err.error?.error ?? err.message))
     });
   }
 
