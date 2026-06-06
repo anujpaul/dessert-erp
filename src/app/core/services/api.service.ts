@@ -9,7 +9,8 @@ import {
   Customer, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport,
   Vendor, PurchaseOrderSummary, PurchaseOrder, APInvoice, APAgingReport,
   RetailStore, POSTransactionSummary, POSTransaction, Promotion, Coupon,
-  CouponValidationResult, RetailSummary
+  CouponValidationResult, RetailSummary,
+  Campaign, LoyaltyProgram, CustomerLoyaltyAccount
 } from '../models/erp.models';
 
 @Injectable({ providedIn: 'root' })
@@ -109,6 +110,8 @@ export class ApiService {
   startPicking = (id: string) => this.http.post<void>(`${this.base}/ar/sales-orders/${id}/picking`, {});
   shipSalesOrder = (id: string, r: any) => this.http.post<void>(`${this.base}/ar/sales-orders/${id}/ship`, r);
   cancelSalesOrder = (id: string) => this.http.post<void>(`${this.base}/ar/sales-orders/${id}/cancel`, {});
+  applySalesOrderDiscount = (id: string, discountPct: number) =>
+    this.http.post<SalesOrder>(`${this.base}/ar/sales-orders/${id}/apply-discount`, { discountPct });
   generateARInvoice = (orderId: string) =>
     this.http.post<ARInvoice>(`${this.base}/ar/sales-orders/${orderId}/generate-invoice`, {});
 
@@ -248,6 +251,69 @@ export class ApiService {
     if (to)   p = p.set('to', to);
     return this.http.get<RetailSummary>(`${this.base}/omnichannel/summary`, { params: p });
   };
+
+  // ── Marketing ──────────────────────────────────────────────────────────────
+  // Campaigns
+  getCampaigns     = () => this.http.get<Campaign[]>(`${this.base}/marketing/campaigns`);
+  getCampaign      = (id: string) => this.http.get<Campaign>(`${this.base}/marketing/campaigns/${id}`);
+  createCampaign   = (r: any) => this.http.post<Campaign>(`${this.base}/marketing/campaigns`, r);
+  updateCampaign   = (id: string, r: any) => this.http.put<Campaign>(`${this.base}/marketing/campaigns/${id}`, r);
+  setCampaignStatus = (id: string, status: string) =>
+    this.http.patch<Campaign>(`${this.base}/marketing/campaigns/${id}/status`, { status });
+  recordCampaignMetrics = (id: string, r: any) =>
+    this.http.post<Campaign>(`${this.base}/marketing/campaigns/${id}/metrics`, r);
+  deleteCampaign   = (id: string) => this.http.delete(`${this.base}/marketing/campaigns/${id}`);
+
+  // Marketing Promotions
+  getMarketingPromotions   = () => this.http.get<Promotion[]>(`${this.base}/marketing/promotions`);
+  createMarketingPromotion = (r: any) => this.http.post<Promotion>(`${this.base}/marketing/promotions`, r);
+  updateMarketingPromotion = (id: string, r: any) => this.http.put<Promotion>(`${this.base}/marketing/promotions/${id}`, r);
+  toggleMarketingPromotion = (id: string) => this.http.patch<Promotion>(`${this.base}/marketing/promotions/${id}/toggle`, {});
+  deleteMarketingPromotion = (id: string) => this.http.delete(`${this.base}/marketing/promotions/${id}`);
+
+  // Marketing Coupons
+  getMarketingCoupons = (promotionId?: string) => {
+    let p = new HttpParams();
+    if (promotionId) p = p.set('promotionId', promotionId);
+    return this.http.get<Coupon[]>(`${this.base}/marketing/coupons`, { params: p });
+  };
+  createMarketingCoupon     = (r: any) => this.http.post<Coupon>(`${this.base}/marketing/coupons`, r);
+  bulkCreateMarketingCoupons = (r: any) => this.http.post<Coupon[]>(`${this.base}/marketing/coupons/bulk`, r);
+  validateMarketingCoupon   = (code: string, orderAmount = 0) =>
+    this.http.get<CouponValidationResult>(`${this.base}/marketing/coupons/validate?code=${code}&orderAmount=${orderAmount}`);
+  deactivateMarketingCoupon = (id: string) => this.http.patch(`${this.base}/marketing/coupons/${id}/deactivate`, {});
+
+  // Loyalty Programs
+  getLoyaltyPrograms     = () => this.http.get<LoyaltyProgram[]>(`${this.base}/marketing/loyalty`);
+  getLoyaltyProgram      = (id: string) => this.http.get<LoyaltyProgram>(`${this.base}/marketing/loyalty/${id}`);
+  createLoyaltyProgram   = (r: any) => this.http.post<LoyaltyProgram>(`${this.base}/marketing/loyalty`, r);
+  updateLoyaltyProgram   = (id: string, r: any) => this.http.put<LoyaltyProgram>(`${this.base}/marketing/loyalty/${id}`, r);
+  toggleLoyaltyProgram   = (id: string) => this.http.patch<LoyaltyProgram>(`${this.base}/marketing/loyalty/${id}/toggle`, {});
+  getLoyaltyAccounts     = (programId: string) =>
+    this.http.get<CustomerLoyaltyAccount[]>(`${this.base}/marketing/loyalty/${programId}/accounts`);
+  enrollCustomer         = (programId: string, r: any) =>
+    this.http.post<CustomerLoyaltyAccount>(`${this.base}/marketing/loyalty/${programId}/enroll`, r);
+  awardPoints            = (programId: string, r: any) =>
+    this.http.post<CustomerLoyaltyAccount>(`${this.base}/marketing/loyalty/${programId}/award`, r);
+  redeemPoints           = (programId: string, r: any) =>
+    this.http.post<CustomerLoyaltyAccount>(`${this.base}/marketing/loyalty/${programId}/redeem`, r);
+
+  // ── Trade / Price Agreements ──────────────────────────────────────────────
+  getPriceAgreements = (params?: { productId?: string; activeOnly?: boolean }) => {
+    let p = new HttpParams();
+    if (params?.productId)  p = p.set('productId', params.productId);
+    if (params?.activeOnly) p = p.set('activeOnly', 'true');
+    return this.http.get<any[]>(`${this.base}/price-agreements`, { params: p });
+  };
+  createPriceAgreement = (r: any) => this.http.post<any>(`${this.base}/price-agreements`, r);
+  updatePriceAgreement = (id: string, r: any) => this.http.put<any>(`${this.base}/price-agreements/${id}`, r);
+  deletePriceAgreement = (id: string) => this.http.delete<void>(`${this.base}/price-agreements/${id}`);
+  getEffectivePrice    = (variantId: string) =>
+    this.http.get<any>(`${this.base}/price-agreements/effective-price/${variantId}`);
+  bulkApplyPriceAgreement = (productId: string, r: any) =>
+    this.http.post<any>(`${this.base}/price-agreements/bulk-apply?productId=${productId}`, r);
+  getPriceAgreementSuggestions = (productId: string) =>
+    this.http.get<any[]>(`${this.base}/price-agreements/suggestions?productId=${productId}`);
 
   exportData = (entityType: string, fileFormat: string) =>
     this.http.get(`${this.base}/dm/export?entityType=${entityType}&fileFormat=${fileFormat}`,

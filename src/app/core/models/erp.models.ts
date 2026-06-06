@@ -144,6 +144,8 @@ export interface Category {
   id: string; code: string; name: string; description?: string;
   parentCategoryId?: string; parentCategoryName?: string;
   displayOrder: number; isActive: boolean;
+  taxRate: number;       // default for all products in this category
+  taxCode?: string;      // e.g. CLOTHING, FOOTWEAR, FOOD_EXEMPT
 }
 export interface Brand {
   id: string; code: string; name: string; description?: string;
@@ -166,7 +168,11 @@ export interface ProductSummary {
 }
 export interface ProductDetail extends ProductSummary {
   description?: string; longDescription?: string;
-  unitOfMeasure: string; baseCost: number; taxRate: number; currency: string;
+  unitOfMeasure: string; baseCost: number; currency: string;
+  effectiveTaxRate: number;    // resolved: override if set, else category rate
+  taxRateOverride?: number;    // null/undefined = inherited from category
+  categoryTaxRate: number;     // the category's default rate
+  categoryTaxCode?: string;    // e.g. CLOTHING, FOOTWEAR
   tags?: string; imageUrl?: string;
   preferredVendorId?: string; preferredVendorName?: string;
   variants: ProductVariantDto[];
@@ -185,6 +191,31 @@ export interface VariantLookup {
   taxRate: number; unitOfMeasure: string;
   quantityAvailable: number;
   preferredVendorId?: string; preferredVendorName?: string;
+}
+
+// ── Marketing ─────────────────────────────────────────────────────────────────
+export interface Campaign {
+  id: string; name: string; description?: string;
+  type: string; status: string; targetAudience: string;
+  startDate: string; endDate?: string;
+  budget: number; actualSpend: number;
+  linkedPromotionId?: string; linkedPromotionName?: string;
+  tags?: string; reachCount: number; conversionCount: number;
+  createdAt: string;
+}
+
+export interface LoyaltyProgram {
+  id: string; name: string; description?: string;
+  pointsPerDollar: number; dollarPerPoint: number;
+  redemptionThreshold: number;
+  silverThreshold: number; goldThreshold: number; platinumThreshold: number;
+  isActive: boolean; createdAt: string;
+}
+
+export interface CustomerLoyaltyAccount {
+  id: string; customerId: string; customerName: string; customerEmail?: string;
+  totalPoints: number; redeemedPoints: number; availablePoints: number;
+  tier: string; lastActivityAt?: string; createdAt: string;
 }
 
 // ── General Ledger ────────────────────────────────────────────────────────────

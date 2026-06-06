@@ -45,15 +45,33 @@ type Tab = 'categories' | 'brands' | 'products' | 'inventory';
 
         @if (showCatForm) {
           <div class="inline-form">
-            <input class="form-control" [(ngModel)]="catForm.code"        placeholder="Code (e.g. CLOTHING)" />
-            <input class="form-control" [(ngModel)]="catForm.name"        placeholder="Name" />
+            <div class="form-row">
+              <input class="form-control" [(ngModel)]="catForm.code"        placeholder="Code (e.g. A-01)" />
+              <input class="form-control" [(ngModel)]="catForm.name"        placeholder="Name" />
+            </div>
             <input class="form-control" [(ngModel)]="catForm.description" placeholder="Description (optional)" />
             <select class="form-control" [(ngModel)]="catForm.parentCategoryId">
-              <option value="">— No Parent —</option>
+              <option value="">— No Parent (top-level) —</option>
               @for (c of categories(); track c.id) {
                 <option [value]="c.id">{{ c.name }}</option>
               }
             </select>
+            <div class="form-row">
+              <div style="flex:1">
+                <label class="form-label">Default Tax Rate %
+                  <span style="color:#6b7280;font-weight:400;font-size:.78rem">— applies to all products in this category</span>
+                </label>
+                <input class="form-control" type="number" min="0" max="100" step="0.01"
+                  [(ngModel)]="catForm.taxRate" placeholder="e.g. 8.25" />
+              </div>
+              <div style="flex:1">
+                <label class="form-label">Tax Code
+                  <span style="color:#6b7280;font-weight:400;font-size:.78rem">— for future tax engine (optional)</span>
+                </label>
+                <input class="form-control" [(ngModel)]="catForm.taxCode"
+                  placeholder="e.g. CLOTHING, FOOTWEAR, FOOD_EXEMPT" />
+              </div>
+            </div>
             <input class="form-control" type="number" [(ngModel)]="catForm.displayOrder" placeholder="Display Order" />
             <div class="form-actions">
               <button class="btn btn-primary" (click)="createCategory()">Save</button>
@@ -63,13 +81,27 @@ type Tab = 'categories' | 'brands' | 'products' | 'inventory';
         }
 
         <table class="data-table">
-          <thead><tr><th>Code</th><th>Name</th><th>Parent</th><th>Order</th><th>Active</th><th></th></tr></thead>
+          <thead><tr><th>Code</th><th>Name</th><th>Parent</th><th>Tax Rate</th><th>Tax Code</th><th>Order</th><th>Active</th><th></th></tr></thead>
           <tbody>
             @for (c of categories(); track c.id) {
               <tr>
                 <td><code>{{ c.code }}</code></td>
                 <td>{{ c.name }}</td>
                 <td>{{ c.parentCategoryName ?? '—' }}</td>
+                <td>
+                  @if (c.taxRate > 0) {
+                    <span style="font-weight:600;color:#059669">{{ c.taxRate }}%</span>
+                  } @else {
+                    <span style="color:#9ca3af">0%</span>
+                  }
+                </td>
+                <td>
+                  @if (c.taxCode) {
+                    <code style="font-size:.75rem;background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px">{{ c.taxCode }}</code>
+                  } @else {
+                    <span style="color:#9ca3af">—</span>
+                  }
+                </td>
                 <td>{{ c.displayOrder }}</td>
                 <td><span class="badge" [class.badge-green]="c.isActive" [class.badge-gray]="!c.isActive">{{ c.isActive ? 'Yes' : 'No' }}</span></td>
                 <td>
@@ -81,7 +113,7 @@ type Tab = 'categories' | 'brands' | 'products' | 'inventory';
               </tr>
             }
             @if (!categories().length) {
-              <tr><td colspan="6" class="empty-row">No categories found.</td></tr>
+              <tr><td colspan="8" class="empty-row">No categories found.</td></tr>
             }
           </tbody>
         </table>
@@ -140,218 +172,235 @@ type Tab = 'categories' | 'brands' | 'products' | 'inventory';
 
   <!-- ── PRODUCTS TAB ────────────────────────────────────────────────────── -->
   @if (activeTab() === 'products') {
-    @if (!selectedProduct()) {
-      <!-- Product List -->
-      <div class="toolbar">
-        <input class="form-control search-input" [(ngModel)]="productSearch"
-          (ngModelChange)="onProductSearch()" placeholder="Search SKU or name..." />
-        <select class="form-control" [(ngModel)]="productStatusFilter" (ngModelChange)="loadProducts()">
-          <option value="">All Statuses</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
-          <option value="Discontinued">Discontinued</option>
-        </select>
-        <select class="form-control" [(ngModel)]="productCategoryFilter" (ngModelChange)="loadProducts()">
-          <option value="">All Categories</option>
-          @for (c of categories(); track c.id) {
-            <option [value]="c.id">{{ c.name }}</option>
-          }
-        </select>
-        <button class="btn btn-primary" (click)="showProductForm=!showProductForm">+ New Product</button>
-      </div>
-
-      @if (showProductForm) {
-        <div class="card" style="margin-bottom:1rem">
-          <div class="card-header"><span>New Product</span></div>
-          <div class="inline-form">
-            <div class="form-row">
-              <input class="form-control" [(ngModel)]="productForm.sku"  placeholder="Base SKU (e.g. DLT-JACKET)" />
-              <input class="form-control" [(ngModel)]="productForm.name" placeholder="Product Name" />
-            </div>
-            <div class="form-row">
-              <select class="form-control" [(ngModel)]="productForm.categoryId">
-                <option value="">— Category —</option>
-                @for (c of categories(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
-              </select>
-              <select class="form-control" [(ngModel)]="productForm.brandId">
-                <option value="">— Brand —</option>
-                @for (b of brands(); track b.id) { <option [value]="b.id">{{ b.name }}</option> }
-              </select>
-            </div>
-            <div class="form-row">
-              <select class="form-control" [(ngModel)]="productForm.productType">
-                <option value="Clothing">Clothing</option>
-                <option value="Footwear">Footwear</option>
-                <option value="Accessory">Accessory</option>
-                <option value="Food">Food</option>
-                <option value="PersonalCare">Personal Care</option>
-                <option value="Other">Other</option>
-              </select>
-              <select class="form-control" [(ngModel)]="productForm.genderTarget">
-                <option value="Unisex">Unisex</option>
-                <option value="Men">Men</option>
-                <option value="Women">Women</option>
-                <option value="Kids">Kids</option>
-                <option value="None">None</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <input class="form-control" type="number" [(ngModel)]="productForm.basePrice" placeholder="Base Price" />
-              <input class="form-control" type="number" [(ngModel)]="productForm.baseCost"  placeholder="Base Cost" />
-              <input class="form-control" type="number" [(ngModel)]="productForm.taxRate"   placeholder="Tax Rate %" />
-            </div>
-            <div class="form-row">
-              <input class="form-control" [(ngModel)]="productForm.unitOfMeasure" placeholder="UOM (e.g. Each)" />
-              <input class="form-control" [(ngModel)]="productForm.currency"      placeholder="Currency (USD)" />
-            </div>
-            <textarea class="form-control" [(ngModel)]="productForm.description" placeholder="Short description" rows="2"></textarea>
-            <input class="form-control" [(ngModel)]="productForm.tags" placeholder="Tags (comma-separated)" />
-            <div class="form-actions">
-              <button class="btn btn-primary" (click)="createProduct()">Save Product</button>
-              <button class="btn btn-secondary" (click)="showProductForm=false">Cancel</button>
-            </div>
-          </div>
-        </div>
-      }
-
-      <div class="card">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>SKU</th><th>Name</th><th>Category</th><th>Brand</th>
-              <th>Type</th><th>Base Price</th><th>Variants</th><th>Status</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (p of products(); track p.id) {
-              <tr>
-                <td><code>{{ p.sku }}</code></td>
-                <td>{{ p.name }}</td>
-                <td>{{ p.categoryName ?? '—' }}</td>
-                <td>{{ p.brandName ?? '—' }}</td>
-                <td>{{ p.productType }}</td>
-                <td>{{ p.basePrice | currency:'USD':'symbol':'1.2-2' }}</td>
-                <td>{{ p.variantCount }}</td>
-                <td><span class="badge" [ngClass]="statusClass(p.status)">{{ p.status }}</span></td>
-                <td>
-                  <button class="btn btn-sm btn-secondary" (click)="openProduct(p.id)">Edit ›</button>
-                </td>
-              </tr>
-            }
-            @if (!products().length) {
-              <tr><td colspan="9" class="empty-row">No products found.</td></tr>
-            }
-          </tbody>
-        </table>
-      </div>
-
-    } @else {
-      <!-- Product Detail / Variant Editor -->
-      <div class="back-bar">
-        <button class="btn btn-secondary btn-sm" (click)="closeProduct()">← Back to Products</button>
-        <h2 style="margin:0 1rem">{{ selectedProduct()!.name }} <code style="font-size:.85rem">{{ selectedProduct()!.sku }}</code></h2>
-        <span class="badge" [ngClass]="statusClass(selectedProduct()!.status)">{{ selectedProduct()!.status }}</span>
-        @if (selectedProduct()!.status === 'Active') {
-          <button class="btn btn-sm btn-warn" style="margin-left:auto" (click)="changeStatus('Inactive')">Deactivate</button>
-        } @else if (selectedProduct()!.status === 'Inactive') {
-          <button class="btn btn-sm btn-primary" style="margin-left:auto" (click)="changeStatus('Active')">Activate</button>
+    <!-- Toolbar always visible -->
+    <div class="toolbar">
+      <input class="form-control search-input" [(ngModel)]="productSearch"
+        (ngModelChange)="onProductSearch()" placeholder="Search name or SKU..." />
+      <select class="form-control" style="max-width:160px" [(ngModel)]="productStatusFilter" (ngModelChange)="loadProducts()">
+        <option value="">All Statuses</option>
+        <option value="Active">Active</option>
+        <option value="Inactive">Inactive</option>
+        <option value="Discontinued">Discontinued</option>
+      </select>
+      <select class="form-control" style="max-width:180px" [(ngModel)]="productCategoryFilter" (ngModelChange)="loadProducts()">
+        <option value="">All Categories</option>
+        @for (c of categories(); track c.id) {
+          <option [value]="c.id">{{ c.name }}</option>
         }
-      </div>
+      </select>
+      <button class="btn btn-primary" (click)="showProductForm=!showProductForm">+ New Product</button>
+    </div>
 
-      <div class="section-row">
-        <!-- Variants List -->
-        <div class="card" style="flex:2">
-          <div class="card-header">
-            <span>Variants</span>
-            <button class="btn btn-primary btn-sm" (click)="showVariantForm=!showVariantForm">+ Add Variant</button>
+    <!-- New Product Form -->
+    @if (showProductForm) {
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-header"><span>New Product</span></div>
+        <div class="inline-form">
+          <div class="form-row">
+            <input class="form-control" [(ngModel)]="productForm.sku"  placeholder="Base SKU (e.g. DLT-JACKET)" />
+            <input class="form-control" [(ngModel)]="productForm.name" placeholder="Product Name" />
           </div>
-
-          @if (showVariantForm) {
-            <div class="inline-form">
-              <div class="form-row">
-                <input class="form-control" [(ngModel)]="variantForm.size"     placeholder="Size (S, M, L, XL, 10oz…)" />
-                <input class="form-control" [(ngModel)]="variantForm.color"    placeholder="Color (optional)" />
-                <input class="form-control" [(ngModel)]="variantForm.material" placeholder="Material (optional)" />
-              </div>
-              <div class="form-row">
-                <input class="form-control" [(ngModel)]="variantForm.barcode"      placeholder="Barcode (optional)" />
-                <input class="form-control" type="number" [(ngModel)]="variantForm.priceOverride" placeholder="Price Override (leave blank = base)" />
-                <input class="form-control" type="number" [(ngModel)]="variantForm.costOverride"  placeholder="Cost Override" />
-              </div>
-              <div class="form-row">
-                <input class="form-control" type="number" [(ngModel)]="variantForm.initialStock" placeholder="Initial Stock Qty" />
-                <input class="form-control" type="number" [(ngModel)]="variantForm.reorderPoint"  placeholder="Reorder Point" />
-                <input class="form-control" [(ngModel)]="variantForm.location" placeholder="Bin/Location (optional)" />
-              </div>
-              <div class="form-actions">
-                <button class="btn btn-primary" (click)="addVariant()">Save Variant</button>
-                <button class="btn btn-secondary" (click)="showVariantForm=false">Cancel</button>
-              </div>
-            </div>
-          }
-
-          <table class="data-table">
-            <thead>
-              <tr><th>SKU</th><th>Size</th><th>Color</th><th>Material</th><th>Price</th><th>QOH</th><th>Available</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              @for (v of selectedProduct()!.variants; track v.id) {
-                <tr>
-                  <td><code>{{ v.sku }}</code></td>
-                  <td>{{ v.size }}</td>
-                  <td>{{ v.color ?? '—' }}</td>
-                  <td>{{ v.material ?? '—' }}</td>
-                  <td>{{ v.effectivePrice | currency:'USD':'symbol':'1.2-2' }}</td>
-                  <td>{{ v.quantityOnHand }}</td>
-                  <td>{{ v.quantityAvailable }}</td>
-                  <td><span class="badge" [ngClass]="statusClass(v.status)">{{ v.status }}</span></td>
-                </tr>
-              }
-              @if (!selectedProduct()!.variants.length) {
-                <tr><td colspan="8" class="empty-row">No variants yet — add one above.</td></tr>
-              }
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Product Info Card -->
-        <div class="card" style="flex:1;align-self:start">
-          <div class="card-header"><span>Product Info</span></div>
-          <dl class="info-list">
-            <dt>Category</dt><dd>{{ selectedProduct()!.categoryName ?? '—' }}</dd>
-            <dt>Brand</dt><dd>{{ selectedProduct()!.brandName ?? '—' }}</dd>
-            <dt>Type</dt><dd>{{ selectedProduct()!.productType }}</dd>
-            <dt>Gender</dt><dd>{{ selectedProduct()!.genderTarget }}</dd>
-            <dt>UOM</dt><dd>{{ selectedProduct()!.unitOfMeasure }}</dd>
-            <dt>Base Price</dt><dd>{{ selectedProduct()!.basePrice | currency }}</dd>
-            <dt>Base Cost</dt><dd>{{ selectedProduct()!.baseCost | currency }}</dd>
-            <dt>Tax Rate</dt><dd>{{ selectedProduct()!.taxRate }}%</dd>
-            <dt>Tags</dt><dd>{{ selectedProduct()!.tags || '—' }}</dd>
-            <dt>Description</dt><dd>{{ selectedProduct()!.description || '—' }}</dd>
-            <dt style="align-self:center">Preferred Vendor</dt>
-            <dd>
-              @if (!editingPreferredVendor) {
-                <span style="display:flex;align-items:center;gap:.5rem">
-                  <span>{{ selectedProduct()!.preferredVendorName || '—' }}</span>
-                  <button class="btn btn-sm btn-secondary" style="font-size:.72rem;padding:.15rem .45rem" (click)="startEditPreferredVendor()">✏️</button>
-                </span>
-              } @else {
-                <span style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
-                  <select class="form-control" style="padding:.25rem .4rem;font-size:.82rem;flex:1;min-width:120px" [(ngModel)]="preferredVendorId">
-                    <option value="">— None —</option>
-                    @for (v of vendors(); track v.id) {
-                      <option [value]="v.id">{{ v.name }}</option>
-                    }
-                  </select>
-                  <button class="btn btn-primary btn-sm" style="font-size:.75rem" (click)="savePreferredVendor()">Save</button>
-                  <button class="btn btn-secondary btn-sm" style="font-size:.75rem" (click)="editingPreferredVendor = false">✕</button>
-                </span>
-              }
-            </dd>
-          </dl>
+          <div class="form-row">
+            <select class="form-control" [(ngModel)]="productForm.categoryId">
+              <option value="">— Category —</option>
+              @for (c of categories(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+            </select>
+            <select class="form-control" [(ngModel)]="productForm.brandId">
+              <option value="">— Brand —</option>
+              @for (b of brands(); track b.id) { <option [value]="b.id">{{ b.name }}</option> }
+            </select>
+          </div>
+          <div class="form-row">
+            <select class="form-control" [(ngModel)]="productForm.productType">
+              <option value="Clothing">Clothing</option>
+              <option value="Footwear">Footwear</option>
+              <option value="Accessory">Accessory</option>
+              <option value="Food">Food</option>
+              <option value="PersonalCare">Personal Care</option>
+              <option value="Other">Other</option>
+            </select>
+            <select class="form-control" [(ngModel)]="productForm.genderTarget">
+              <option value="Unisex">Unisex</option>
+              <option value="Men">Men</option>
+              <option value="Women">Women</option>
+              <option value="Kids">Kids</option>
+              <option value="None">None</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <input class="form-control" type="number" [(ngModel)]="productForm.basePrice" placeholder="Base Price" />
+            <input class="form-control" type="number" [(ngModel)]="productForm.baseCost"  placeholder="Base Cost" />
+          </div>
+          <div style="font-size:.8rem;color:#6b7280;background:#f9fafb;border-radius:6px;padding:.5rem .75rem;margin-top:-.2rem">
+            💡 Tax rate is inherited from the selected <b>category</b>. Go to the Categories tab to set it there.
+          </div>
+          <div class="form-row">
+            <input class="form-control" [(ngModel)]="productForm.unitOfMeasure" placeholder="UOM (e.g. Each)" />
+            <input class="form-control" [(ngModel)]="productForm.currency"      placeholder="Currency (USD)" />
+          </div>
+          <textarea class="form-control" [(ngModel)]="productForm.description" placeholder="Short description" rows="2"></textarea>
+          <input class="form-control" [(ngModel)]="productForm.tags" placeholder="Tags (comma-separated)" />
+          <div class="form-actions">
+            <button class="btn btn-primary" (click)="createProduct()">Save Product</button>
+            <button class="btn btn-secondary" (click)="showProductForm=false">Cancel</button>
+          </div>
         </div>
       </div>
     }
+
+    <!-- Master-Detail Split -->
+    <div class="products-split">
+
+      <!-- LEFT: Product List -->
+      <div class="products-list-panel">
+        @for (p of products(); track p.id) {
+          <div class="product-row" [class.product-row-selected]="selectedProduct()?.id === p.id"
+               (click)="openProduct(p.id)">
+            <div class="product-row-main">
+              <span class="product-row-name">{{ p.name }}</span>
+              <span class="badge" [ngClass]="statusClass(p.status)" style="margin-left:auto;flex-shrink:0">{{ p.status }}</span>
+            </div>
+            <div class="product-row-meta">
+              <code class="product-sku">{{ p.sku }}</code>
+              <span class="product-meta-pill">{{ p.categoryName ?? 'No category' }}</span>
+              <span class="product-meta-pill">{{ p.brandName ?? 'No brand' }}</span>
+              <span class="product-meta-pill">{{ p.variantCount }} variant{{ p.variantCount === 1 ? '' : 's' }}</span>
+              <span class="product-price">{{ p.basePrice | currency:'USD':'symbol':'1.2-2' }}</span>
+            </div>
+          </div>
+        }
+        @if (!products().length) {
+          <div class="empty-panel">No products found.</div>
+        }
+      </div>
+
+      <!-- RIGHT: Variant Detail Panel -->
+      @if (selectedProduct()) {
+        <div class="products-detail-panel">
+          <!-- Detail Header -->
+          <div class="detail-header">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+                <h3 class="detail-title">{{ selectedProduct()!.name }}</h3>
+                <code style="font-size:.82rem;color:#6b7280">{{ selectedProduct()!.sku }}</code>
+                <span class="badge" [ngClass]="statusClass(selectedProduct()!.status)">{{ selectedProduct()!.status }}</span>
+              </div>
+              <div style="font-size:.82rem;color:#6b7280;margin-top:.2rem">
+                {{ selectedProduct()!.categoryName }} · {{ selectedProduct()!.brandName }} · {{ selectedProduct()!.genderTarget }}
+              </div>
+            </div>
+            <div style="display:flex;gap:.5rem;flex-shrink:0">
+              @if (selectedProduct()!.status === 'Active') {
+                <button class="btn btn-sm btn-warn" (click)="changeStatus('Inactive')">Deactivate</button>
+              } @else if (selectedProduct()!.status === 'Inactive') {
+                <button class="btn btn-sm btn-primary" (click)="changeStatus('Active')">Activate</button>
+              }
+              <button class="btn btn-sm btn-secondary" (click)="closeProduct()">✕</button>
+            </div>
+          </div>
+
+          <!-- Quick Info Strip -->
+          <div class="info-strip">
+            <div class="info-strip-item"><span class="info-strip-label">Base Price</span><span>{{ selectedProduct()!.basePrice | currency }}</span></div>
+            <div class="info-strip-item"><span class="info-strip-label">Base Cost</span><span>{{ selectedProduct()!.baseCost | currency }}</span></div>
+            <div class="info-strip-item">
+              <span class="info-strip-label">Tax Rate</span>
+              <span>
+                {{ selectedProduct()!.effectiveTaxRate }}%
+                @if (selectedProduct()!.taxRateOverride != null) {
+                  <span style="font-size:.7rem;color:#d97706;margin-left:4px">(override)</span>
+                } @else {
+                  <span style="font-size:.7rem;color:#9ca3af;margin-left:4px">(from category)</span>
+                }
+              </span>
+            </div>
+            <div class="info-strip-item"><span class="info-strip-label">UOM</span><span>{{ selectedProduct()!.unitOfMeasure }}</span></div>
+            <div class="info-strip-item">
+              <span class="info-strip-label">Preferred Vendor</span>
+              @if (!editingPreferredVendor) {
+                <span style="display:flex;align-items:center;gap:.3rem">
+                  <span>{{ selectedProduct()!.preferredVendorName || '—' }}</span>
+                  <button class="btn btn-sm btn-secondary" style="font-size:.68rem;padding:.1rem .35rem" (click)="startEditPreferredVendor()">✏️</button>
+                </span>
+              } @else {
+                <span style="display:flex;align-items:center;gap:.3rem">
+                  <select class="form-control" style="padding:.2rem .4rem;font-size:.8rem" [(ngModel)]="preferredVendorId">
+                    <option value="">— None —</option>
+                    @for (v of vendors(); track v.id) { <option [value]="v.id">{{ v.name }}</option> }
+                  </select>
+                  <button class="btn btn-primary btn-sm" style="font-size:.72rem" (click)="savePreferredVendor()">Save</button>
+                  <button class="btn btn-secondary btn-sm" style="font-size:.72rem" (click)="editingPreferredVendor=false">✕</button>
+                </span>
+              }
+            </div>
+          </div>
+
+          <!-- Variants Section -->
+          <div class="variants-section">
+            <div class="variants-header">
+              <span style="font-weight:600">Variants <span style="color:#6b7280;font-weight:400">({{ selectedProduct()!.variants.length }})</span></span>
+              <button class="btn btn-primary btn-sm" (click)="showVariantForm=!showVariantForm">+ Add Variant</button>
+            </div>
+
+            @if (showVariantForm) {
+              <div class="inline-form" style="margin-bottom:1rem">
+                <div class="form-row">
+                  <input class="form-control" [(ngModel)]="variantForm.size"     placeholder="Size (S, M, L, XL…)" />
+                  <input class="form-control" [(ngModel)]="variantForm.color"    placeholder="Color (optional)" />
+                  <input class="form-control" [(ngModel)]="variantForm.material" placeholder="Material (optional)" />
+                </div>
+                <div class="form-row">
+                  <input class="form-control" [(ngModel)]="variantForm.barcode"           placeholder="Barcode (optional)" />
+                  <input class="form-control" type="number" [(ngModel)]="variantForm.priceOverride" placeholder="Price Override" />
+                  <input class="form-control" type="number" [(ngModel)]="variantForm.costOverride"  placeholder="Cost Override" />
+                </div>
+                <div class="form-row">
+                  <input class="form-control" type="number" [(ngModel)]="variantForm.initialStock" placeholder="Initial Stock" />
+                  <input class="form-control" type="number" [(ngModel)]="variantForm.reorderPoint"  placeholder="Reorder Point" />
+                  <input class="form-control" [(ngModel)]="variantForm.location" placeholder="Bin/Location" />
+                </div>
+                <div class="form-actions">
+                  <button class="btn btn-primary" (click)="addVariant()">Save Variant</button>
+                  <button class="btn btn-secondary" (click)="showVariantForm=false">Cancel</button>
+                </div>
+              </div>
+            }
+
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>SKU</th><th>Size</th><th>Color</th><th>Material</th>
+                  <th>Price</th><th>On Hand</th><th>Available</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (v of selectedProduct()!.variants; track v.id) {
+                  <tr>
+                    <td><code>{{ v.sku }}</code></td>
+                    <td>{{ v.size || '—' }}</td>
+                    <td>{{ v.color ?? '—' }}</td>
+                    <td>{{ v.material ?? '—' }}</td>
+                    <td>{{ v.effectivePrice | currency:'USD':'symbol':'1.2-2' }}</td>
+                    <td>{{ v.quantityOnHand }}</td>
+                    <td>{{ v.quantityAvailable }}</td>
+                    <td><span class="badge" [ngClass]="statusClass(v.status)">{{ v.status }}</span></td>
+                  </tr>
+                }
+                @if (!selectedProduct()!.variants.length) {
+                  <tr><td colspan="8" class="empty-row">No variants yet — add one above.</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      } @else {
+        <div class="detail-empty">
+          <div style="font-size:2.5rem;margin-bottom:.75rem">👔</div>
+          <div style="font-weight:600;color:#374151;margin-bottom:.25rem">Select a product</div>
+          <div style="color:#9ca3af;font-size:.88rem">Click any product on the left to view its variants</div>
+        </div>
+      }
+    </div>
   }
 
   <!-- ── INVENTORY TAB ───────────────────────────────────────────────────── -->
@@ -486,6 +535,87 @@ type Tab = 'categories' | 'brands' | 'products' | 'inventory';
     .info-list { display: grid; grid-template-columns: 1fr 2fr; gap: .4rem .5rem; margin: 0; font-size: .88rem; }
     dt { font-weight: 600; color: var(--text-secondary, #6b7280); }
     dd { margin: 0; }
+
+    /* ── Products master-detail split ── */
+    .products-split {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .products-split { grid-template-columns: 1fr; }
+    }
+
+    /* Left panel — product list */
+    .products-list-panel {
+      background: var(--card-bg, #fff);
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: 8px;
+      overflow: hidden;
+      max-height: calc(100vh - 260px);
+      overflow-y: auto;
+    }
+    .product-row {
+      padding: .65rem .9rem;
+      border-bottom: 1px solid var(--border-color, #f3f4f6);
+      cursor: pointer;
+      transition: background .12s;
+    }
+    .product-row:last-child { border-bottom: none; }
+    .product-row:hover { background: var(--hover-bg, #f9fafb); }
+    .product-row-selected { background: #eff6ff !important; border-left: 3px solid #2563eb; }
+    .product-row-main { display: flex; align-items: center; gap: .5rem; margin-bottom: .25rem; }
+    .product-row-name { font-weight: 600; font-size: .9rem; color: var(--text-primary, #111); }
+    .product-row-meta { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+    .product-sku { font-size: .75rem; color: #6b7280; }
+    .product-meta-pill {
+      font-size: .72rem; color: #6b7280;
+      background: #f3f4f6; border-radius: 9999px;
+      padding: .05rem .4rem;
+    }
+    .product-price { font-size: .8rem; font-weight: 600; color: #059669; margin-left: auto; }
+    .empty-panel { padding: 2.5rem 1rem; text-align: center; color: #9ca3af; font-size: .9rem; }
+
+    /* Right panel — variant detail */
+    .products-detail-panel {
+      background: var(--card-bg, #fff);
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .detail-header {
+      display: flex; align-items: flex-start; gap: .75rem;
+      padding: .9rem 1rem; border-bottom: 1px solid var(--border-color, #e5e7eb);
+      background: var(--surface-alt, #f8fafc);
+    }
+    .detail-title { font-size: 1.1rem; font-weight: 700; margin: 0; }
+    .detail-empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 300px; background: var(--card-bg, #fff);
+      border: 1px dashed var(--border-color, #e5e7eb);
+      border-radius: 8px; color: #9ca3af;
+    }
+
+    /* Info strip */
+    .info-strip {
+      display: flex; gap: 0; flex-wrap: wrap;
+      border-bottom: 1px solid var(--border-color, #e5e7eb);
+    }
+    .info-strip-item {
+      display: flex; flex-direction: column; gap: .1rem;
+      padding: .55rem 1rem; border-right: 1px solid var(--border-color, #e5e7eb);
+      font-size: .85rem;
+    }
+    .info-strip-item:last-child { border-right: none; }
+    .info-strip-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: #9ca3af; font-weight: 600; }
+
+    /* Variants section */
+    .variants-section { padding: 1rem; }
+    .variants-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: .75rem;
+    }
   `]
 })
 export class ProductManagementComponent implements OnInit {
@@ -494,7 +624,7 @@ export class ProductManagementComponent implements OnInit {
   // Categories
   categories = signal<Category[]>([]);
   showCatForm = false;
-  catForm = { code: '', name: '', description: '', parentCategoryId: '', displayOrder: 0 };
+  catForm = { code: '', name: '', description: '', parentCategoryId: '', displayOrder: 0, taxRate: 0, taxCode: '' };
 
   // Brands
   brands = signal<Brand[]>([]);
@@ -518,7 +648,7 @@ export class ProductManagementComponent implements OnInit {
   productForm = {
     sku: '', name: '', categoryId: '', brandId: '',
     productType: 'Clothing', genderTarget: 'Unisex',
-    basePrice: 0, baseCost: 0, taxRate: 8, unitOfMeasure: 'Each',
+    basePrice: 0, baseCost: 0, unitOfMeasure: 'Each',
     currency: 'USD', description: '', tags: ''
   };
 
@@ -572,12 +702,14 @@ export class ProductManagementComponent implements OnInit {
       name: this.catForm.name.trim(),
       description: this.catForm.description || null,
       parentCategoryId: this.catForm.parentCategoryId || null,
-      displayOrder: this.catForm.displayOrder
+      displayOrder: this.catForm.displayOrder,
+      taxRate: +this.catForm.taxRate || 0,
+      taxCode: this.catForm.taxCode?.trim().toUpperCase() || null
     };
     this.api.createCategory(req).subscribe({
       next: () => {
         this.showCatForm = false;
-        this.catForm = { code: '', name: '', description: '', parentCategoryId: '', displayOrder: 0 };
+        this.catForm = { code: '', name: '', description: '', parentCategoryId: '', displayOrder: 0, taxRate: 0, taxCode: '' };
         this.loadCategories();
       },
       error: err => alert('Error: ' + (err.error?.title ?? err.message))
@@ -654,7 +786,6 @@ export class ProductManagementComponent implements OnInit {
       genderTarget: this.productForm.genderTarget,
       basePrice: +this.productForm.basePrice,
       baseCost: +this.productForm.baseCost,
-      taxRate: +this.productForm.taxRate,
       unitOfMeasure: this.productForm.unitOfMeasure,
       currency: this.productForm.currency,
       description: this.productForm.description || null,
@@ -663,7 +794,7 @@ export class ProductManagementComponent implements OnInit {
     this.api.createProduct(req).subscribe({
       next: () => {
         this.showProductForm = false;
-        this.productForm = { sku: '', name: '', categoryId: '', brandId: '', productType: 'Clothing', genderTarget: 'Unisex', basePrice: 0, baseCost: 0, taxRate: 8, unitOfMeasure: 'Each', currency: 'USD', description: '', tags: '' };
+        this.productForm = { sku: '', name: '', categoryId: '', brandId: '', productType: 'Clothing', genderTarget: 'Unisex', basePrice: 0, baseCost: 0, unitOfMeasure: 'Each', currency: 'USD', description: '', tags: '' };
         this.loadProducts();
       },
       error: err => alert('Error: ' + (err.error?.title ?? err.message))

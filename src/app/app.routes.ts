@@ -52,5 +52,15 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./modules/omnichannel/omnichannel.component').then(m => m.OmniChannelComponent)
   },
+  {
+    path: 'marketing',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/marketing/marketing.component').then(m => m.MarketingComponent)
+  },
+  {
+    path: 'trade-agreements',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/trade-agreements/trade-agreements.component').then(m => m.TradeAgreementsComponent)
+  },
   { path: '**', redirectTo: 'dashboard' }
 ];

@@ -81,13 +81,59 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
     <div *ngIf="showCreateSO" class="form-card">
       <div class="form-title">New Sales Order</div>
       <div class="form-grid">
-        <div class="form-field">
+
+        <!-- ── Customer picker with inline quick-create ── -->
+        <div class="form-field" style="position:relative">
           <label>Customer</label>
-          <select [(ngModel)]="soForm.customerId">
-            <option value="">— select —</option>
-            <option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</option>
-          </select>
+          <div style="display:flex;gap:6px;align-items:center">
+            <div style="position:relative;flex:1">
+              <input [(ngModel)]="custSearchInSO" (ngModelChange)="onCustSearchInSO()"
+                (focus)="showCustDropdown=true" (blur)="hideCustDropdown()"
+                [placeholder]="soForm.customerId ? selectedSOCustomerName : 'Search customer…'"
+                style="width:100%;padding:.45rem .7rem;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem" />
+              <div *ngIf="showCustDropdown && custDropdownOptions.length" class="variant-dropdown" style="top:100%;z-index:50">
+                <div *ngFor="let c of custDropdownOptions" class="variant-option" (mousedown)="selectSOCustomer(c)">
+                  <strong>{{ c.name }}</strong>
+                  <span style="color:#6b7280;font-size:.8rem;margin-left:6px">{{ c.customerNumber }}</span>
+                </div>
+                <div class="variant-option" style="border-top:1px solid #e5e7eb;color:#6366f1;font-weight:600;font-size:.85rem"
+                  (mousedown)="showInlineNewCust=true;showCustDropdown=false">
+                  + Not listed? Create new customer
+                </div>
+              </div>
+              <div *ngIf="showCustDropdown && !custDropdownOptions.length && custSearchInSO.trim().length === 1" class="variant-dropdown" style="top:100%;z-index:50">
+                <div class="variant-option" style="color:#9ca3af;font-style:italic">Type at least 2 characters to search…</div>
+              </div>
+              <div *ngIf="showCustDropdown && !custDropdownOptions.length && custSearchInSO.trim().length >= 2" class="variant-dropdown" style="top:100%;z-index:50">
+                <div class="variant-option" style="color:#6b7280">No customers found</div>
+                <div class="variant-option" style="color:#6366f1;font-weight:600"
+                  (mousedown)="showInlineNewCust=true;showCustDropdown=false">
+                  + Create "{{ custSearchInSO }}" as new customer
+                </div>
+              </div>
+            </div>
+            <button *ngIf="soForm.customerId" class="btn-ghost-sm" (click)="clearSOCustomer()" title="Change customer">✕</button>
+          </div>
+
+          <!-- Inline quick-create customer form -->
+          <div *ngIf="showInlineNewCust" style="margin-top:10px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+            <div style="font-size:.8rem;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">New Customer</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="form-field" style="margin:0"><label style="font-size:.75rem">Name *</label><input [(ngModel)]="inlineCustForm.name" [value]="custSearchInSO" /></div>
+              <div class="form-field" style="margin:0"><label style="font-size:.75rem">Email</label><input [(ngModel)]="inlineCustForm.email" type="email" /></div>
+              <div class="form-field" style="margin:0"><label style="font-size:.75rem">Phone</label><input [(ngModel)]="inlineCustForm.phone" /></div>
+              <div class="form-field" style="margin:0"><label style="font-size:.75rem">Currency</label><input [(ngModel)]="inlineCustForm.currency" /></div>
+              <div class="form-field" style="margin:0"><label style="font-size:.75rem">Payment Terms (days)</label><input type="number" [(ngModel)]="inlineCustForm.paymentTermsDays" /></div>
+              <div class="form-field" style="margin:0"><label style="font-size:.75rem">Credit Limit</label><input type="number" [(ngModel)]="inlineCustForm.creditLimit" /></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn-primary-sm" (click)="createCustomerInline()">✓ Create & Select</button>
+              <button class="btn-ghost-sm" (click)="showInlineNewCust=false">Cancel</button>
+            </div>
+            <div *ngIf="inlineCustError" style="color:#dc2626;font-size:.8rem;margin-top:6px">{{ inlineCustError }}</div>
+          </div>
         </div>
+
         <div class="form-field"><label>Order Date</label><input type="date" [(ngModel)]="soForm.orderDate" /></div>
         <div class="form-field"><label>Requested Ship Date</label><input type="date" [(ngModel)]="soForm.requestedShipDate" /></div>
         <div class="form-field"><label>Customer PO Ref</label><input [(ngModel)]="soForm.customerRef" /></div>
@@ -96,7 +142,7 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
       </div>
       <div class="form-actions">
         <button class="btn-primary" (click)="createSO()">Create</button>
-        <button class="btn-ghost" (click)="showCreateSO = false">Cancel</button>
+        <button class="btn-ghost" (click)="showCreateSO=false;showInlineNewCust=false">Cancel</button>
       </div>
     </div>
     <div class="split">
@@ -155,6 +201,23 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
           </div>
           <input type="number" [(ngModel)]="addLineQty" min="1" placeholder="Qty" style="width:70px;padding:.4rem;border:1px solid #d1d5db;border-radius:6px" />
           <button class="btn-primary-sm" (click)="addSOLine()" [disabled]="!selectedVariant">Add</button>
+          <span *ngIf="appliedCoupon?.discountType === 'PercentageOff'" style="font-size:.78rem;color:#16a34a;font-weight:600">
+            {{ appliedCoupon!.discountValue }}% off will apply
+          </span>
+        </div>
+
+        <!-- Coupon code (Draft only) -->
+        <div *ngIf="selectedOrder.status === 'Draft'" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <span style="font-size:.8rem;font-weight:600;color:#6b7280;text-transform:uppercase">Coupon Code</span>
+          <input [(ngModel)]="couponCodeInput" placeholder="Enter promo code…"
+            style="padding:.35rem .7rem;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;width:180px;text-transform:uppercase"
+            (keyup.enter)="applyCoupon()" />
+          <button class="btn-primary-sm" (click)="applyCoupon()" [disabled]="!couponCodeInput.trim()">Apply</button>
+          <span *ngIf="appliedCoupon" style="color:#16a34a;font-size:.85rem;font-weight:600">
+            ✓ {{appliedCoupon.promotionName}} — {{couponDiscountLabel}} off each line
+          </span>
+          <button *ngIf="appliedCoupon" (click)="removeCoupon()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:.85rem">✕ Remove</button>
+          <span *ngIf="couponError" style="color:#dc3545;font-size:.85rem">{{couponError}}</span>
         </div>
 
         <div class="sub-section-title">Order Lines</div>
@@ -400,11 +463,83 @@ export class AccountsReceivableComponent implements OnInit {
   showCreateSO = false;
   soForm = { customerId:'', orderDate:'', requestedShipDate:'', customerRef:'', description:'', currency:'USD' };
 
+  // Customer search-dropdown inside SO form
+  custSearchInSO = '';
+  custDropdownOptions: Customer[] = [];
+  showCustDropdown = false;
+  showInlineNewCust = false;
+  inlineCustForm = { name:'', email:'', phone:'', currency:'USD', paymentTermsDays: 30, creditLimit: 10000 };
+  inlineCustError = '';
+
+  get selectedSOCustomerName(): string {
+    return this.customers.find(c => c.id === this.soForm.customerId)?.name ?? '';
+  }
+
+  private custSearchTimer: any;
+
+  onCustSearchInSO() {
+    const q = this.custSearchInSO.trim();
+    this.custDropdownOptions = [];
+
+    if (q.length < 2) {
+      // Don't search until at least 2 chars — avoids loading 1M records
+      this.showCustDropdown = q.length > 0; // show "type more" hint if 1 char
+      return;
+    }
+
+    // Debounce — wait 300ms after user stops typing before hitting the API
+    clearTimeout(this.custSearchTimer);
+    this.custSearchTimer = setTimeout(() => {
+      const lower = q.toLowerCase();
+      // Search locally if customers are already loaded (< ~500 records typical for SMB)
+      // For large datasets the backend search endpoint would be called here instead
+      this.custDropdownOptions = this.customers
+        .filter(c => c.name.toLowerCase().includes(lower) || c.customerNumber.toLowerCase().includes(lower))
+        .slice(0, 10);
+      this.showCustDropdown = true;
+    }, 300);
+  }
+
+  selectSOCustomer(c: Customer) {
+    this.soForm.customerId = c.id;
+    this.custSearchInSO = c.name;
+    this.showCustDropdown = false;
+    this.soForm.currency = c.currency;
+  }
+
+  clearSOCustomer() {
+    this.soForm.customerId = '';
+    this.custSearchInSO = '';
+    this.custDropdownOptions = [];
+  }
+
+  hideCustDropdown() {
+    // Delay to allow mousedown on dropdown options to fire first
+    setTimeout(() => { this.showCustDropdown = false; }, 200);
+  }
+
+  createCustomerInline() {
+    if (!this.inlineCustForm.name.trim()) { this.inlineCustError = 'Name is required.'; return; }
+    this.inlineCustError = '';
+    this.api.createCustomer(this.inlineCustForm).subscribe({
+      next: (c: Customer) => {
+        this.customers = [...this.customers, c];
+        this.selectSOCustomer(c);
+        this.showInlineNewCust = false;
+        this.inlineCustForm = { name:'', email:'', phone:'', currency:'USD', paymentTermsDays: 30, creditLimit: 10000 };
+      },
+      error: () => { this.inlineCustError = 'Failed to create customer.'; }
+    });
+  }
+
   // Variant search for SO line picker
   variantSearchQuery = '';
   variantResults: VariantLookup[] = [];
   selectedVariant: VariantLookup | null = null;
   addLineQty = 1;
+  couponCodeInput = '';
+  appliedCoupon: { code: string; promotionName: string; discountType: string; discountValue: number } | null = null;
+  couponError = '';
   private searchTimer: any;
 
   arInvoices: ARInvoice[] = [];
@@ -467,6 +602,8 @@ export class AccountsReceivableComponent implements OnInit {
       this.loadSalesOrders();
       this.selectedOrder = d;
       this.showCreateSO = false;
+      this.showInlineNewCust = false;
+      this.custSearchInSO = '';
       this.soForm = { customerId:'', orderDate:'', requestedShipDate:'', customerRef:'', description:'', currency:'USD' };
     });
   }
@@ -498,14 +635,76 @@ export class AccountsReceivableComponent implements OnInit {
 
   addSOLine() {
     if (!this.selectedOrder || !this.selectedVariant) return;
+    // If a coupon is active and it's a percentage discount, apply it to the new line too
+    const discountPct = (this.appliedCoupon?.discountType === 'PercentageOff')
+      ? this.appliedCoupon.discountValue
+      : 0;
     this.api.addSalesOrderLine(this.selectedOrder.id, {
       productVariantId: this.selectedVariant.variantId,
-      quantity: this.addLineQty
+      quantity: this.addLineQty,
+      discountPct
     }).subscribe(d => {
       this.selectedOrder = d;
       this.clearVariant();
       this.addLineQty = 1;
     });
+  }
+
+  get couponDiscountLabel(): string {
+    if (!this.appliedCoupon) return '';
+    if (this.appliedCoupon.discountType === 'PercentageOff')
+      return this.appliedCoupon.discountValue + '%';
+    if (this.appliedCoupon.discountType === 'FixedAmountOff')
+      return '$' + this.appliedCoupon.discountValue;
+    return 'Buy ' + this.appliedCoupon.discountValue + ' get free';
+  }
+
+  applyCoupon() {
+    const code = this.couponCodeInput.trim().toUpperCase();
+    if (!code || !this.selectedOrder) return;
+    this.couponError = '';
+    const orderAmount = this.selectedOrder.grandTotal;
+    this.api.validateMarketingCoupon(code, orderAmount).subscribe({
+      next: (result) => {
+        if (!result.isValid) {
+          this.couponError = result.message || 'Invalid coupon.';
+          this.appliedCoupon = null;
+          return;
+        }
+        this.appliedCoupon = {
+          code,
+          promotionName: result.promotionName || '',
+          discountType: result.discountType || 'PercentageOff',
+          discountValue: result.discountValue
+        };
+        // Apply discount to all order lines
+        const discountPct = result.discountType === 'PercentageOff'
+          ? result.discountValue
+          : 0; // fixed/BuyXGetY shown on total but line-level pct stays 0
+        this.applyDiscountToLines(discountPct);
+      },
+      error: () => { this.couponError = 'Could not validate coupon.'; }
+    });
+  }
+
+  private applyDiscountToLines(discountPct: number) {
+    if (!this.selectedOrder || discountPct <= 0) return;
+    this.api.applySalesOrderDiscount(this.selectedOrder.id, discountPct).subscribe({
+      next: (updated) => {
+        this.selectedOrder = updated;
+      },
+      error: (err) => {
+        this.couponError = err?.error?.error || 'Failed to apply discount to order lines.';
+      }
+    });
+  }
+
+  removeCoupon() {
+    this.appliedCoupon = null;
+    this.couponCodeInput = '';
+    this.couponError = '';
+    // Reload order to restore original prices
+    if (this.selectedOrder) this.selectOrder(this.selectedOrder.id);
   }
 
   removeSOLine(lineId: string) {

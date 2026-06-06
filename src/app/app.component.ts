@@ -278,7 +278,12 @@ export class AppComponent {
         { label: 'Batch Jobs',      route: '/batch-jobs',      icon: '⚙️' }
       ] },
     { label: 'OmniChannel', icon: '🌐',
-      items: [{ label: 'Orders & Promotions', route: '/omnichannel', icon: '🛒' }] }
+      items: [{ label: 'Orders & Fulfillment', route: '/omnichannel', icon: '🛒' }] },
+    { label: 'Marketing', icon: '📣',
+      items: [
+        { label: 'Campaigns & Loyalty', route: '/marketing',          icon: '🎯' },
+        { label: 'Trade Agreements',    route: '/trade-agreements',   icon: '📋' }
+      ] }
   ];
 
   constructor(
