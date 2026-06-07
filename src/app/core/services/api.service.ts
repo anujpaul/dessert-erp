@@ -338,4 +338,19 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/dm/import?entityType=${entityType}`, fd);
   };
 
+  // ── AP Prepayment + Three-Way Match ──────────────────────────────────────
+  createPrepaymentInvoice = (req: {
+    vendorId: string; purchaseOrderId: string; vendorInvoiceRef: string;
+    invoiceDate: string; dueDate: string; amount: number; taxAmount?: number; description?: string;
+  }) => this.http.post<any>(`${this.base}/ap/invoices/prepayment`, req);
+
+  runThreeWayMatch = (invoiceId: string) =>
+    this.http.post<any>(`${this.base}/ap/invoices/${invoiceId}/match`, {});
+
+  bypassMatch = (invoiceId: string, reason: string) =>
+    this.http.post<any>(`${this.base}/ap/invoices/${invoiceId}/bypass-match`, { reason });
+
+  applyPrepayment = (invoiceId: string, prepaymentInvoiceId: string) =>
+    this.http.post<any>(`${this.base}/ap/invoices/${invoiceId}/apply-prepayment/${prepaymentInvoiceId}`, {});
+
 }

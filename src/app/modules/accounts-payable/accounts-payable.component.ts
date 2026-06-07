@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { Vendor, PurchaseOrderSummary, PurchaseOrder, Receipt, APInvoice, APAgingReport, VariantLookup } from '../../core/models/erp.models';
+import { Vendor, PurchaseOrderSummary, PurchaseOrder, Receipt, APInvoice, APAgingReport, VariantLookup, ThreeWayMatchResult } from '../../core/models/erp.models';
 
 type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
 
@@ -146,8 +146,27 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
             <button *ngIf="hasReceivableToInvoice()" class="btn-primary-sm" (click)="generateAPInv()">🧾 Generate Invoice</button>
             <!-- Close: once fully invoiced -->
             <button *ngIf="selectedPO.invoiceStatus === 'FullyInvoiced' && selectedPO.status !== 'Closed'" class="btn-ghost-sm" (click)="closePO()">🔒 Close PO</button>
+            <!-- Prepayment: can raise advance invoice any time PO is not cancelled/closed -->
+            <button *ngIf="!['Closed','Cancelled'].includes(selectedPO.status)" class="btn-ghost-sm" (click)="openPrepayForm()">💳 Raise Prepayment</button>
             <!-- Cancel: only Draft/Sent with no invoices -->
             <button *ngIf="['Draft','Sent'].includes(selectedPO.status) && selectedPO.invoiceStatus === 'NotInvoiced'" class="btn-danger-sm" (click)="cancelPO()">✕ Cancel</button>
+          </div>
+        </div>
+
+        <!-- ── Prepayment Invoice Form ── -->
+        <div *ngIf="showPrepayForm" class="form-card">
+          <div class="form-title">💳 Raise Prepayment Invoice</div>
+          <div class="form-grid">
+            <div class="form-field"><label>Vendor Invoice Ref *</label><input [(ngModel)]="prepayForm.vendorInvoiceRef" placeholder="PREPAY-001" /></div>
+            <div class="form-field"><label>Invoice Date *</label><input type="date" [(ngModel)]="prepayForm.invoiceDate" /></div>
+            <div class="form-field"><label>Due Date *</label><input type="date" [(ngModel)]="prepayForm.dueDate" /></div>
+            <div class="form-field"><label>Prepayment Amount *</label><input type="number" [(ngModel)]="prepayForm.amount" min="0" step="0.01" /></div>
+            <div class="form-field"><label>Tax on Prepayment</label><input type="number" [(ngModel)]="prepayForm.taxAmount" min="0" step="0.01" /></div>
+            <div class="form-field" style="grid-column:1/-1"><label>Description</label><input [(ngModel)]="prepayForm.description" placeholder="Advance payment for…" /></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" (click)="submitPrepay()">Create Prepayment</button>
+            <button class="btn-ghost" (click)="showPrepayForm = false">Cancel</button>
           </div>
         </div>
 
@@ -329,35 +348,125 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     <div class="split">
       <div class="list-panel">
         <div *ngFor="let inv of filteredAPInvoices" class="list-row" [class.active]="selectedAPInv?.id === inv.id" (click)="selectedAPInv = inv">
-          <div class="row-main"><strong>{{ inv.invoiceNumber }}</strong><span class="badge" [class]="'badge-apinv-' + inv.status.toLowerCase()">{{ inv.status }}</span></div>
+          <div class="row-main">
+            <strong>{{ inv.invoiceNumber }}</strong>
+            <span class="badge" [class]="'badge-apinv-' + inv.status.toLowerCase()">{{ inv.status }}</span>
+          </div>
           <div class="row-sub">{{ inv.vendorName }} · Ref: {{ inv.vendorInvoiceRef }}</div>
-          <div class="row-amounts">Due {{ inv.dueDate | date:'MMM d' }} · {{ inv.outstandingAmount | currency }}</div>
+          <div class="row-amounts">
+            Due {{ inv.dueDate | date:'MMM d' }} · {{ inv.outstandingAmount | currency }}
+            <span *ngIf="inv.invoiceType === 'Prepayment'" class="badge badge-type-prepay ml">Prepayment</span>
+            <span *ngIf="inv.matchStatus !== 'NotMatched'" class="badge ml" [class]="'badge-match-' + inv.matchStatus.toLowerCase()">{{ inv.matchStatus }}</span>
+          </div>
         </div>
         <div *ngIf="!filteredAPInvoices.length" class="empty">No AP invoices.</div>
       </div>
       <div class="detail-panel" *ngIf="selectedAPInv">
         <div class="detail-header">
-          <div class="detail-title">{{ selectedAPInv.invoiceNumber }}</div>
+          <div>
+            <div class="detail-title">{{ selectedAPInv.invoiceNumber }}</div>
+            <div style="display:flex;gap:.4rem;margin-top:.35rem;flex-wrap:wrap">
+              <span *ngIf="selectedAPInv.invoiceType === 'Prepayment'" class="badge badge-type-prepay">💳 Prepayment</span>
+              <span class="badge" [class]="'badge-apinv-' + selectedAPInv.status.toLowerCase()">{{ selectedAPInv.status }}</span>
+              <span *ngIf="selectedAPInv.matchStatus !== 'NotMatched'" class="badge" [class]="'badge-match-' + selectedAPInv.matchStatus.toLowerCase()">3WM: {{ selectedAPInv.matchStatus }}</span>
+            </div>
+          </div>
           <div class="action-row">
-            <button *ngIf="selectedAPInv.status === 'Draft'" class="btn-primary-sm" (click)="approveAPInv(selectedAPInv.id)">Approve</button>
-            <button *ngIf="['Approved','Overdue'].includes(selectedAPInv.status)" class="btn-primary-sm" (click)="applyAPPayment(selectedAPInv)">Pay</button>
-            <button *ngIf="selectedAPInv.status !== 'Paid' && selectedAPInv.status !== 'Voided'" class="btn-danger-sm" (click)="voidAPInv(selectedAPInv.id)">Void</button>
+            <!-- 3WM: run match for PO-linked standard invoices not yet matched or already errored -->
+            <button *ngIf="selectedAPInv.status === 'Draft' && selectedAPInv.invoiceType !== 'Prepayment' && selectedAPInv.purchaseOrderId"
+                    class="btn-ghost-sm" (click)="runMatch(selectedAPInv.id)">🔍 Run Match</button>
+            <!-- Bypass: shown when there's an exception -->
+            <button *ngIf="selectedAPInv.status === 'Draft' && matchIsException(selectedAPInv)"
+                    class="btn-ghost-sm" (click)="openBypassForm(selectedAPInv)">🔑 Bypass Exception</button>
+            <!-- Apply prepayment: shown for standard Draft invoices linked to a PO -->
+            <button *ngIf="selectedAPInv.status === 'Draft' && selectedAPInv.invoiceType !== 'Prepayment' && selectedAPInv.purchaseOrderId && !selectedAPInv.linkedPrepaymentInvoiceId"
+                    class="btn-ghost-sm" (click)="openApplyPrepayPanel(selectedAPInv)">🔗 Apply Prepayment</button>
+            <button *ngIf="selectedAPInv.status === 'Draft'" class="btn-primary-sm" (click)="approveAPInv(selectedAPInv.id)">✅ Approve</button>
+            <button *ngIf="['Approved','Overdue'].includes(selectedAPInv.status)" class="btn-primary-sm" (click)="applyAPPayment(selectedAPInv)">💰 Pay</button>
+            <button *ngIf="selectedAPInv.status !== 'Paid' && selectedAPInv.status !== 'Voided'" class="btn-danger-sm" (click)="voidAPInv(selectedAPInv.id)">🗑 Void</button>
           </div>
         </div>
+
+        <!-- Core amounts info grid -->
         <div class="info-grid">
           <div class="info-item"><span class="info-label">Vendor</span><span>{{ selectedAPInv.vendorName }}</span></div>
+          <div class="info-item"><span class="info-label">PO</span><span>{{ selectedAPInv.poNumber || '—' }}</span></div>
           <div class="info-item"><span class="info-label">Vendor Ref</span><span>{{ selectedAPInv.vendorInvoiceRef }}</span></div>
-          <div class="info-item"><span class="info-label">Status</span><span class="badge" [class]="'badge-apinv-' + selectedAPInv.status.toLowerCase()">{{ selectedAPInv.status }}</span></div>
           <div class="info-item"><span class="info-label">Invoice Date</span><span>{{ selectedAPInv.invoiceDate | date:'mediumDate' }}</span></div>
           <div class="info-item"><span class="info-label">Due Date</span><span>{{ selectedAPInv.dueDate | date:'mediumDate' }}</span></div>
           <div class="info-item"><span class="info-label">Sub Total</span><span>{{ selectedAPInv.subTotal | currency }}</span></div>
           <div class="info-item"><span class="info-label">Tax</span><span>{{ selectedAPInv.taxAmount | currency }}</span></div>
           <div class="info-item"><span class="info-label">Total</span><span><strong>{{ selectedAPInv.totalAmount | currency }}</strong></span></div>
-          <div class="info-item"><span class="info-label">Paid</span><span>{{ selectedAPInv.paidAmount | currency }}</span></div>
-          <div class="info-item"><span class="info-label">Outstanding</span><span [class.neg]="selectedAPInv.outstandingAmount > 0"><strong>{{ selectedAPInv.outstandingAmount | currency }}</strong></span></div>
+          <div class="info-item"><span class="info-label">Paid</span><span class="ok">{{ selectedAPInv.paidAmount | currency }}</span></div>
+          <div class="info-item" *ngIf="selectedAPInv.prepaymentApplied > 0">
+            <span class="info-label">Prepayment Applied</span>
+            <span class="ok">{{ selectedAPInv.prepaymentApplied | currency }}</span>
+          </div>
+          <div class="info-item"><span class="info-label">Outstanding</span>
+            <span [class.neg]="selectedAPInv.outstandingAmount > 0"><strong>{{ selectedAPInv.outstandingAmount | currency }}</strong></span>
+          </div>
+          <div class="info-item" *ngIf="selectedAPInv.daysOutstanding > 0">
+            <span class="info-label">Days Outstanding</span>
+            <span class="neg"><strong>{{ selectedAPInv.daysOutstanding }}d</strong></span>
+          </div>
         </div>
+
+        <!-- Linked prepayment info -->
+        <div *ngIf="selectedAPInv.linkedPrepaymentInvoiceId" class="match-card match-card-ok" style="margin-bottom:.75rem">
+          <strong>💳 Prepayment Applied</strong>
+          <span style="margin-left:.5rem">{{ selectedAPInv.prepaymentApplied | currency }} offset from prepayment invoice.</span>
+        </div>
+
+        <!-- Three-Way Match status card -->
+        <div *ngIf="selectedAPInv.matchStatus !== 'NotMatched' && selectedAPInv.invoiceType !== 'Prepayment'" class="match-card"
+             [class.match-card-ok]="selectedAPInv.matchStatus === 'Matched' || selectedAPInv.matchStatus === 'Bypassed'"
+             [class.match-card-warn]="matchIsException(selectedAPInv)">
+          <div class="match-header">
+            <strong>🔍 Three-Way Match: {{ selectedAPInv.matchStatus }}</strong>
+            <span *ngIf="selectedAPInv.bypassReason" class="muted" style="margin-left:.5rem">Manager bypass: "{{ selectedAPInv.bypassReason }}"</span>
+          </div>
+          <div *ngIf="selectedAPInv.matchNotes" class="match-notes">{{ formatMatchNotes(selectedAPInv.matchNotes) }}</div>
+        </div>
+
+        <!-- Bypass exception form -->
+        <div *ngIf="showBypassForm && bypassTarget?.id === selectedAPInv.id" class="form-card">
+          <div class="form-title">🔑 Manager Bypass — Match Exception</div>
+          <p style="font-size:.82rem;color:#64748b;margin-bottom:.75rem">Overriding a match exception requires a documented reason. This action is logged.</p>
+          <div class="form-field"><label>Bypass Reason *</label>
+            <input [(ngModel)]="bypassReason" placeholder="e.g. Price increase agreed verbally, PO amendment pending…" style="width:100%" />
+          </div>
+          <div class="form-actions" style="margin-top:.75rem">
+            <button class="btn-primary" (click)="submitBypass()">Submit Bypass</button>
+            <button class="btn-ghost" (click)="showBypassForm = false">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Apply prepayment panel -->
+        <div *ngIf="showApplyPrepay && applyPrepayTarget?.id === selectedAPInv.id" class="form-card">
+          <div class="form-title">🔗 Apply Prepayment Invoice</div>
+          <div *ngIf="!availablePrepayments.length" class="muted" style="margin-bottom:.5rem">
+            No approved prepayment invoices found for this vendor.
+          </div>
+          <table *ngIf="availablePrepayments.length" class="data-table" style="margin-bottom:.75rem">
+            <thead><tr><th>Invoice</th><th>Ref</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr *ngFor="let p of availablePrepayments">
+                <td>{{ p.invoiceNumber }}</td>
+                <td>{{ p.vendorInvoiceRef }}</td>
+                <td class="num">{{ p.totalAmount | currency }}</td>
+                <td><span class="badge" [class]="'badge-apinv-' + p.status.toLowerCase()">{{ p.status }}</span></td>
+                <td><button class="btn-primary-sm" (click)="submitApplyPrepayment(p.id)">Apply</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="form-actions">
+            <button class="btn-ghost" (click)="showApplyPrepay = false">Close</button>
+          </div>
+        </div>
+
+        <!-- Payment form -->
         <div *ngIf="showAPPayForm && apPayTarget?.id === selectedAPInv.id" class="form-card">
-          <div class="form-title">Post Payment</div>
+          <div class="form-title">💰 Post Payment</div>
           <div class="form-grid">
             <div class="form-field"><label>Amount</label><input type="number" [(ngModel)]="apPayForm.amount" /></div>
             <div class="form-field"><label>Date</label><input type="date" [(ngModel)]="apPayForm.paymentDate" /></div>
@@ -516,6 +625,17 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     .variant-attrs { color: #94a3b8; font-size: .75rem; }
     .variant-meta { font-size: .75rem; color: #64748b; margin-top: .2rem; }
     .pref-badge { background: #fef9c3; color: #92400e; border-radius: 4px; padding: .1rem .4rem; font-size: .7rem; font-weight: 600; margin-left: .35rem; }
+    .badge-type-prepay { background: #f0f9ff; color: #0369a1; }
+    .badge-match-matched { background: #dcfce7; color: #166534; }
+    .badge-match-bypassed { background: #f0fdf4; color: #15803d; }
+    .badge-match-qtyexception { background: #fef9c3; color: #92400e; }
+    .badge-match-priceexception { background: #fff7ed; color: #c2410c; }
+    .badge-match-fullexception { background: #fee2e2; color: #dc2626; }
+    .match-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: .75rem 1rem; margin-bottom: .75rem; font-size: .875rem; }
+    .match-card-ok { border-color: #86efac; background: #f0fdf4; }
+    .match-card-warn { border-color: #fca5a5; background: #fff5f5; }
+    .match-header { font-weight: 600; margin-bottom: .35rem; }
+    .match-notes { color: #64748b; font-size: .8rem; font-family: monospace; white-space: pre-wrap; }
   `]
 })
 export class AccountsPayableComponent implements OnInit {
@@ -565,6 +685,16 @@ export class AccountsPayableComponent implements OnInit {
   showAPPayForm = false;
   apPayTarget: APInvoice | null = null;
   apPayForm = { amount: 0, paymentDate:'', paymentMethod:'BankTransfer', reference:'' };
+
+  // Prepayment + 3WM state
+  showPrepayForm = false;
+  prepayForm = { vendorInvoiceRef:'', invoiceDate:'', dueDate:'', amount: 0, taxAmount: 0, description:'' };
+  showBypassForm = false;
+  bypassTarget: APInvoice | null = null;
+  bypassReason = '';
+  showApplyPrepay = false;
+  applyPrepayTarget: APInvoice | null = null;
+  availablePrepayments: APInvoice[] = [];
 
   apAgingReport: APAgingReport[] = [];
   get apAgingTotals() {
@@ -854,5 +984,120 @@ export class AccountsPayableComponent implements OnInit {
 
   loadAPAging() {
     this.api.getAPAgingReport().subscribe(d => this.apAgingReport = d);
+  }
+
+  // ── Prepayment Invoice ────────────────────────────────────────────────────────
+
+  openPrepayForm() {
+    if (!this.selectedPO) return;
+    const today = new Date().toISOString().split('T')[0];
+    this.prepayForm = { vendorInvoiceRef:'', invoiceDate: today, dueDate: today, amount: 0, taxAmount: 0, description: '' };
+    this.showPrepayForm = true;
+  }
+
+  submitPrepay() {
+    if (!this.selectedPO || !this.prepayForm.vendorInvoiceRef || !this.prepayForm.amount) return;
+    const req = {
+      vendorId: this.selectedPO.vendorId,
+      purchaseOrderId: this.selectedPO.id,
+      vendorInvoiceRef: this.prepayForm.vendorInvoiceRef,
+      invoiceDate: this.prepayForm.invoiceDate,
+      dueDate: this.prepayForm.dueDate,
+      amount: this.prepayForm.amount,
+      taxAmount: this.prepayForm.taxAmount,
+      description: this.prepayForm.description
+    };
+    this.api.createPrepaymentInvoice(req).subscribe({
+      next: () => {
+        this.showPrepayForm = false;
+        this.api.getAPInvoices().subscribe(d => this.apInvoices = d);
+      },
+      error: err => alert('Error: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  // ── Three-Way Match ───────────────────────────────────────────────────────────
+
+  matchIsException(inv: APInvoice): boolean {
+    return ['QtyException','PriceException','FullException'].includes(inv.matchStatus);
+  }
+
+  runMatch(invoiceId: string) {
+    this.api.runThreeWayMatch(invoiceId).subscribe({
+      next: () => this.api.getAPInvoices().subscribe(d => {
+        this.apInvoices = d;
+        this.selectedAPInv = d.find(i => i.id === invoiceId) ?? null;
+      }),
+      error: err => alert('Match failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  openBypassForm(inv: APInvoice) {
+    this.bypassTarget = inv;
+    this.bypassReason = '';
+    this.showBypassForm = true;
+  }
+
+  submitBypass() {
+    if (!this.bypassTarget || !this.bypassReason.trim()) { alert('A reason is required.'); return; }
+    this.api.bypassMatch(this.bypassTarget.id, this.bypassReason).subscribe({
+      next: () => {
+        this.showBypassForm = false;
+        const id = this.bypassTarget!.id;
+        this.api.getAPInvoices().subscribe(d => {
+          this.apInvoices = d;
+          this.selectedAPInv = d.find(i => i.id === id) ?? null;
+        });
+      },
+      error: err => alert('Bypass failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  // ── Apply Prepayment ──────────────────────────────────────────────────────────
+
+  openApplyPrepayPanel(inv: APInvoice) {
+    this.applyPrepayTarget = inv;
+    this.showApplyPrepay = true;
+    // Load prepayment invoices for this vendor
+    this.api.getAPInvoices(inv.vendorId).subscribe(all => {
+      this.availablePrepayments = all.filter(i =>
+        i.invoiceType === 'Prepayment' && i.id !== inv.id &&
+        ['Draft','Approved'].includes(i.status));
+    });
+  }
+
+  submitApplyPrepayment(prepaymentId: string) {
+    if (!this.applyPrepayTarget) return;
+    this.api.applyPrepayment(this.applyPrepayTarget.id, prepaymentId).subscribe({
+      next: () => {
+        this.showApplyPrepay = false;
+        const id = this.applyPrepayTarget!.id;
+        this.api.getAPInvoices().subscribe(d => {
+          this.apInvoices = d;
+          this.selectedAPInv = d.find(i => i.id === id) ?? null;
+        });
+      },
+      error: err => alert('Apply prepayment failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  /** Format match JSON notes into a readable summary string */
+  formatMatchNotes(notes: string): string {
+    try {
+      const n = JSON.parse(notes);
+      return [
+        `GRN Received: ${this.formatCurrency(n.poReceivedValue)}`,
+        `Previously Invoiced: ${this.formatCurrency(n.previouslyInvoiced)}`,
+        `Uninvoiced Received: ${this.formatCurrency(n.uninvoicedReceived)}`,
+        `Invoice Sub-Total: ${this.formatCurrency(n.invoiceSubTotal)}`,
+        `Variance: ${n.variancePct}% (tolerance: ${n.tolerancePct}%)`,
+        n.qtyException ? '⚠ Qty Exception: invoice exceeds received value' : '',
+        n.priceException ? '⚠ Price Exception: variance exceeds tolerance' : '',
+      ].filter(Boolean).join('\n');
+    } catch { return notes; }
+  }
+
+  private formatCurrency(v: number): string {
+    return new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' }).format(v ?? 0);
   }
 }

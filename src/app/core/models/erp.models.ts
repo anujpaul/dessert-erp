@@ -339,14 +339,29 @@ export interface Receipt {
   id: string; receiptNumber: string; receivedDate: string; notes?: string; createdAt: string;
   lines: ReceiptLine[];
 }
+export type APInvoiceType = 'Standard' | 'Prepayment';
+export type ThreeWayMatchStatus = 'NotMatched' | 'Matched' | 'QtyException' | 'PriceException' | 'FullException' | 'Bypassed';
 export interface APInvoice {
   id: string; invoiceNumber: string; vendorId: string; vendorName: string;
   purchaseOrderId?: string; poNumber?: string;
   invoiceDate: string; dueDate: string; description: string; vendorInvoiceRef: string;
   subTotal: number; taxAmount: number; totalAmount: number;
-  paidAmount: number; outstandingAmount: number;
+  paidAmount: number; prepaymentApplied: number; outstandingAmount: number;
   status: 'Draft' | 'Approved' | 'Scheduled' | 'Paid' | 'Overdue' | 'Voided';
+  invoiceType: APInvoiceType;
+  matchStatus: ThreeWayMatchStatus;
+  matchNotes?: string;
+  bypassReason?: string;
+  linkedPrepaymentInvoiceId?: string;
+  linkedPrepaymentNumber?: string;
   daysOutstanding: number; createdAt: string;
+}
+export interface ThreeWayMatchResult {
+  invoiceId: string; matchStatus: ThreeWayMatchStatus;
+  receivedValue: number; previouslyInvoiced: number;
+  uninvoicedReceived: number; invoiceSubTotal: number;
+  variancePct: number; tolerancePct: number;
+  qtyException: boolean; priceException: boolean;
 }
 export interface APAgingReport {
   vendorNumber: string; vendorName: string;
