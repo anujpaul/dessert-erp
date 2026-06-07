@@ -283,6 +283,15 @@ export class AppComponent {
       items: [
         { label: 'Campaigns & Loyalty', route: '/marketing',          icon: '🎯' },
         { label: 'Trade Agreements',    route: '/trade-agreements',   icon: '📋' }
+      ] },
+    { label: 'Inventory', icon: '📦',
+      items: [
+        { label: 'Inventory Management', route: '/inventory-management', icon: '🗃️' }
+      ] },
+    { label: 'Approvals & Expenses', icon: '✅',
+      items: [
+        { label: 'Approval Inbox',     route: '/approval-inbox',     icon: '📥' },
+        { label: 'Expense Management', route: '/expense-management', icon: '💳' }
       ] }
   ];
 

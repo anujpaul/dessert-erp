@@ -184,6 +184,100 @@ export interface InventoryDto {
   reorderPoint: number; minimumStock: number; maximumStock: number;
   location?: string; lastCountDate?: string; needsReorder: boolean;
 }
+
+// ── Inventory Management (extended) ───────────────────────────────────────────
+export interface InventoryItem {
+  id: string;
+  productVariantId: string;
+  sku: string;
+  productName: string;
+  variantDescription?: string;
+  category?: string;
+  brand?: string;
+  unitOfMeasure: string;
+  // Quantity buckets
+  onHand: number;
+  reserved: number;
+  onOrder: number;
+  available: number;
+  projected: number;
+  // Thresholds
+  reorderPoint: number;
+  minimumStock: number;
+  maximumStock: number;
+  // Costing
+  averageCost: number;
+  stockValue: number;
+  // Metadata
+  location?: string;
+  lastCountDate?: string;
+  lastReceivedDate?: string;
+  needsReorder: boolean;
+  isOutOfStock: boolean;
+}
+
+export interface InventorySummary {
+  totalSkus: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  totalStockValue: number;
+  onOrderLines: number;
+}
+
+export interface InventoryTransaction {
+  id: string;
+  productVariantId: string;
+  sku: string;
+  transactionType: string;
+  quantity: number;
+  unitCost: number;
+  balanceAfter: number;
+  referenceNumber?: string;
+  referenceDocumentId?: string;
+  notes?: string;
+  createdBy?: string;
+  transactionDate: string;
+}
+
+export interface AdjustStockRequest {
+  quantity: number;
+  adjustmentType: string;
+  unitCost: number;
+  notes?: string;
+  createdBy?: string;
+}
+
+export interface SetOnHandRequest {
+  quantity: number;
+  unitCost: number;
+  notes?: string;
+  createdBy?: string;
+}
+
+export interface UpdateThresholdsRequest {
+  reorderPoint: number;
+  minimumStock: number;
+  maximumStock: number;
+  location?: string;
+}
+
+export interface LowStockItem {
+  productVariantId: string;
+  sku: string;
+  productName: string;
+  variantDescription?: string;
+  onHand: number;
+  reorderPoint: number;
+  onOrder: number;
+  preferredVendorName?: string;
+}
+
+export interface StockValuation {
+  category: string;
+  skuCount: number;
+  totalOnHand: number;
+  totalValue: number;
+}
 export interface VariantLookup {
   variantId: string; sku: string; barcode?: string;
   productName: string; size: string; color?: string; material?: string;
@@ -255,11 +349,48 @@ export interface TrialBalanceLine {
 }
 
 // ── Accounts Receivable ───────────────────────────────────────────────────────
+// ── Customer Addresses & Contacts ─────────────────────────────────────────────
+export type CustomerAddressType = 'Billing' | 'Shipping' | 'Other';
+export interface CustomerAddress {
+  id: string; label: string; addressType: CustomerAddressType; isPrimary: boolean;
+  line1: string; line2?: string; city: string; state?: string;
+  postalCode?: string; country: string; singleLine: string;
+}
+export interface CustomerContact {
+  id: string; name: string; title?: string;
+  email?: string; phone?: string; mobile?: string;
+  isPrimary: boolean; notes?: string;
+}
+export interface SaveCustomerAddressRequest {
+  label: string; addressType: CustomerAddressType;
+  line1: string; line2?: string; city: string; state?: string;
+  postalCode?: string; country?: string;
+}
+export interface SaveCustomerContactRequest {
+  name: string; title?: string; email?: string;
+  phone?: string; mobile?: string; notes?: string;
+}
+
 export interface Customer {
   id: string; customerNumber: string; name: string;
-  email?: string; phone?: string; address?: string;
+  email?: string; phone?: string;
+  billingAddress?: string; shippingAddress?: string;
+  website?: string; notes?: string;
   currency: string; paymentTermsDays: number; creditLimit: number;
+  outstandingBalance: number; creditUsed: number; creditAvailable: number;
   status: 'Active' | 'Inactive' | 'OnHold' | 'Blacklisted'; createdAt: string;
+  addresses?: CustomerAddress[];
+  contacts?: CustomerContact[];
+}
+export interface CustomerLedgerEntry {
+  entryType: string; reference: string; date: string;
+  debit: number; credit: number; runningBalance: number;
+  status: string; salesOrderNumber?: string;
+}
+export interface CustomerLedger {
+  customerId: string; customerName: string; customerNumber: string;
+  totalInvoiced: number; totalPaid: number; outstandingBalance: number;
+  entries: CustomerLedgerEntry[];
 }
 export type SalesOrderStatus = 'Draft' | 'Confirmed' | 'Picking' | 'Shipped' | 'Invoiced' | 'Closed' | 'Cancelled';
 export interface SalesOrderLine {
@@ -303,12 +434,49 @@ export interface ARAgingReport {
 }
 
 // ── Accounts Payable ──────────────────────────────────────────────────────────
+// ── Vendor Addresses & Contacts ───────────────────────────────────────────────
+export type VendorAddressType = 'Billing' | 'RemitTo' | 'Shipping' | 'Other';
+export interface VendorAddress {
+  id: string; label: string; addressType: VendorAddressType; isPrimary: boolean;
+  line1: string; line2?: string; city: string; state?: string;
+  postalCode?: string; country: string; singleLine: string;
+}
+export interface VendorContact {
+  id: string; name: string; title?: string;
+  email?: string; phone?: string; mobile?: string;
+  isPrimary: boolean; notes?: string;
+}
+export interface SaveVendorAddressRequest {
+  label: string; addressType: VendorAddressType;
+  line1: string; line2?: string; city: string; state?: string;
+  postalCode?: string; country?: string;
+}
+export interface SaveVendorContactRequest {
+  name: string; title?: string; email?: string;
+  phone?: string; mobile?: string; notes?: string;
+}
+
 export interface Vendor {
   id: string; vendorNumber: string; name: string;
-  email?: string; phone?: string; address?: string;
+  email?: string; phone?: string;
+  billingAddress?: string; shippingAddress?: string;
+  website?: string; notes?: string;
   currency: string; paymentTermsDays: number; taxId?: string;
-  bankAccountName?: string; bankAccountNumber?: string;
+  bankAccountName?: string; bankAccountNumber?: string; bankRoutingNumber?: string;
+  outstandingPayable: number;
   status: string; createdAt: string;
+  addresses?: VendorAddress[];
+  contacts?: VendorContact[];
+}
+export interface VendorLedgerEntry {
+  entryType: string; reference: string; date: string;
+  debit: number; credit: number; runningBalance: number;
+  status: string; poNumber?: string;
+}
+export interface VendorLedger {
+  vendorId: string; vendorName: string; vendorNumber: string;
+  totalInvoiced: number; totalPaid: number; outstandingPayable: number;
+  entries: VendorLedgerEntry[];
 }
 export type POStatus = 'Draft' | 'Sent' | 'PartiallyReceived' | 'FullyReceived' | 'Closed' | 'Cancelled';
 export type POInvoiceStatus = 'NotInvoiced' | 'PartiallyInvoiced' | 'FullyInvoiced';
@@ -367,4 +535,68 @@ export interface APAgingReport {
   vendorNumber: string; vendorName: string;
   current: number; days1_30: number; days31_60: number; days61_90: number;
   over90: number; total: number;
+}
+
+// ── Workflow Engine ───────────────────────────────────────────────────────────
+export type WorkflowDocumentType = 'APInvoice' | 'PurchaseOrder' | 'ARInvoice' | 'SalesOrder' | 'JournalEntry' | 'ExpenseReport';
+export type ApprovalStatus = 'NotRequired' | 'Draft' | 'Submitted' | 'UnderReview' | 'Approved' | 'Rejected' | 'Recalled';
+
+export interface WorkflowTemplateStep {
+  id: string; stepOrder: number; stepName: string;
+  approverRole?: string; approverUserId?: string; description?: string;
+}
+export interface WorkflowTemplate {
+  id: string; name: string; documentType: WorkflowDocumentType;
+  amountThreshold: number; isActive: boolean;
+  steps: WorkflowTemplateStep[];
+}
+export interface WorkflowApprovalStep {
+  id: string; stepOrder: number; stepName: string;
+  approverRole?: string; approverUserId?: string;
+  decision: 'Pending' | 'Approved' | 'Rejected' | 'Skipped';
+  actedBy?: string; actedByComments?: string; actedAt?: string;
+}
+export interface WorkflowInstance {
+  id: string; documentType: string; documentId: string;
+  documentRef: string; documentAmount: number;
+  status: ApprovalStatus; currentStepIndex: number; totalSteps: number;
+  submittedBy: string; rejectedReason?: string;
+  createdAt: string; completedAt?: string;
+  steps: WorkflowApprovalStep[];
+}
+export interface PendingApproval {
+  workflowInstanceId: string; stepId: string;
+  documentType: string; documentId: string; documentRef: string;
+  documentAmount: number; stepName: string; approverRole?: string;
+  submittedBy: string; submittedAt: string;
+}
+
+// ── Expense Management ────────────────────────────────────────────────────────
+export interface ExpenseCategory {
+  id: string; name: string; description?: string;
+  glAccountId?: string; limitPerClaim?: number; isActive: boolean;
+}
+export interface ExpenseLine {
+  id: string; categoryId: string; categoryName: string;
+  expenseDate: string; amount: number; description: string;
+  merchant?: string; receiptUrl?: string; isReimbursable: boolean;
+}
+export interface ExpenseReport {
+  id: string; reportNumber: string; employeeName: string;
+  employeeEmail?: string; department?: string; purpose: string;
+  periodStart: string; periodEnd: string; currency: string;
+  totalAmount: number; approvedAmount: number; paidAmount: number;
+  status: string; approvalStatus: ApprovalStatus;
+  workflowInstanceId?: string;
+  submittedBy?: string; submittedAt?: string;
+  approvedBy?: string; approvedAt?: string;
+  rejectedReason?: string; notes?: string; createdAt: string;
+  lines: ExpenseLine[];
+}
+export interface ExpenseReportSummary {
+  id: string; reportNumber: string; employeeName: string;
+  department?: string; purpose: string;
+  periodStart: string; periodEnd: string;
+  totalAmount: number; status: string; approvalStatus: ApprovalStatus;
+  createdAt: string;
 }

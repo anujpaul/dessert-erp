@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { Vendor, PurchaseOrderSummary, PurchaseOrder, Receipt, APInvoice, APAgingReport, VariantLookup, ThreeWayMatchResult } from '../../core/models/erp.models';
+import { Vendor, VendorAddress, VendorContact, VendorLedger, PurchaseOrderSummary, PurchaseOrder, Receipt, APInvoice, APAgingReport, VariantLookup, ThreeWayMatchResult } from '../../core/models/erp.models';
 
 type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
 
@@ -36,12 +36,16 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
         <div class="form-field"><label>Name *</label><input [(ngModel)]="vendForm.name" /></div>
         <div class="form-field"><label>Email</label><input [(ngModel)]="vendForm.email" type="email" /></div>
         <div class="form-field"><label>Phone</label><input [(ngModel)]="vendForm.phone" /></div>
-        <div class="form-field"><label>Address</label><input [(ngModel)]="vendForm.address" /></div>
         <div class="form-field"><label>Tax ID</label><input [(ngModel)]="vendForm.taxId" /></div>
         <div class="form-field"><label>Currency</label><input [(ngModel)]="vendForm.currency" /></div>
         <div class="form-field"><label>Payment Terms (days)</label><input type="number" [(ngModel)]="vendForm.paymentTermsDays" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Billing Address</label><input [(ngModel)]="vendForm.billingAddress" placeholder="Street, City, State, ZIP" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Remit-To / Shipping Address</label><input [(ngModel)]="vendForm.shippingAddress" placeholder="Same as billing if empty" /></div>
         <div class="form-field"><label>Bank Account Name</label><input [(ngModel)]="vendForm.bankAccountName" /></div>
         <div class="form-field"><label>Bank Account Number</label><input [(ngModel)]="vendForm.bankAccountNumber" /></div>
+        <div class="form-field"><label>Bank Routing Number</label><input [(ngModel)]="vendForm.bankRoutingNumber" /></div>
+        <div class="form-field"><label>Website</label><input [(ngModel)]="vendForm.website" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Notes</label><input [(ngModel)]="vendForm.notes" /></div>
       </div>
       <div class="form-actions">
         <button class="btn-primary" (click)="saveVendor()">{{ editVend ? 'Save Changes' : 'Create' }}</button>
@@ -51,13 +55,13 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
 
     <div class="split">
       <div class="list-panel">
-        <div *ngFor="let v of filteredVendors" class="list-row" [class.active]="selectedVend?.id === v.id" (click)="selectedVend = v">
+        <div *ngFor="let v of filteredVendors" class="list-row" [class.active]="selectedVend?.id === v.id" (click)="selectVendor(v)">
           <div class="row-main">
             <strong>{{ v.name }}</strong>
             <span class="badge" [class]="'badge-vend-' + v.status.toLowerCase()">{{ v.status }}</span>
           </div>
           <div class="row-sub">{{ v.vendorNumber }} · {{ v.email || 'No email' }}</div>
-          <div class="row-sub">{{ v.currency }} · {{ v.paymentTermsDays }}d terms</div>
+          <div class="row-sub" *ngIf="v.outstandingPayable > 0" style="color:#dc2626">Payable: {{ v.outstandingPayable | currency }}</div>
         </div>
         <div *ngIf="!filteredVendors.length" class="empty">No vendors.</div>
       </div>
@@ -66,21 +70,167 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
           <div class="detail-title">{{ selectedVend.name }}</div>
           <div class="action-row">
             <button class="btn-primary-sm" (click)="openEditVend(selectedVend)">✏️ Edit</button>
+            <button class="btn-ghost-sm" (click)="loadVendLedger(selectedVend.id)">📒 Statement</button>
             <button class="btn-danger-sm" (click)="deleteVendor(selectedVend)">🗑 Delete</button>
           </div>
         </div>
+
+        <!-- AP balance strip -->
+        <div class="balance-strip">
+          <div class="balance-cell">
+            <span class="balance-label">Outstanding Payable</span>
+            <span class="balance-val" [class.neg]="selectedVend.outstandingPayable > 0">{{ selectedVend.outstandingPayable | currency }}</span>
+          </div>
+          <div class="balance-cell">
+            <span class="balance-label">Currency</span>
+            <span class="balance-val">{{ selectedVend.currency }}</span>
+          </div>
+          <div class="balance-cell">
+            <span class="balance-label">Payment Terms</span>
+            <span class="balance-val">{{ selectedVend.paymentTermsDays }}d</span>
+          </div>
+          <div class="balance-cell">
+            <span class="balance-label">Status</span>
+            <span class="balance-val" style="font-size:.8rem"><span class="badge" [class]="'badge-vend-' + selectedVend.status.toLowerCase()">{{ selectedVend.status }}</span></span>
+          </div>
+        </div>
+
+        <!-- Core info -->
         <div class="info-grid">
           <div class="info-item"><span class="info-label">Vendor #</span><span>{{ selectedVend.vendorNumber }}</span></div>
           <div class="info-item"><span class="info-label">Email</span><span>{{ selectedVend.email || '—' }}</span></div>
           <div class="info-item"><span class="info-label">Phone</span><span>{{ selectedVend.phone || '—' }}</span></div>
-          <div class="info-item"><span class="info-label">Address</span><span>{{ selectedVend.address || '—' }}</span></div>
           <div class="info-item"><span class="info-label">Tax ID</span><span>{{ selectedVend.taxId || '—' }}</span></div>
-          <div class="info-item"><span class="info-label">Currency</span><span>{{ selectedVend.currency }}</span></div>
-          <div class="info-item"><span class="info-label">Payment Terms</span><span>{{ selectedVend.paymentTermsDays }} days</span></div>
-          <div class="info-item"><span class="info-label">Bank Account</span><span>{{ selectedVend.bankAccountName || '—' }}</span></div>
-          <div class="info-item"><span class="info-label">Bank Acct #</span><span>{{ selectedVend.bankAccountNumber || '—' }}</span></div>
-          <div class="info-item"><span class="info-label">Status</span><span class="badge" [class]="'badge-vend-' + selectedVend.status.toLowerCase()">{{ selectedVend.status }}</span></div>
           <div class="info-item"><span class="info-label">Since</span><span>{{ selectedVend.createdAt | date:'mediumDate' }}</span></div>
+        </div>
+
+        <!-- Addresses section -->
+        <div class="section-header-row">
+          <span class="sub-section-title">📍 Addresses</span>
+          <button class="btn-primary-sm" (click)="openVendAddrForm()">+ Add</button>
+        </div>
+        <div class="inline-form" *ngIf="showVendAddrForm">
+          <div class="form-grid-3">
+            <div class="form-field"><label>Label *</label><input [(ngModel)]="vendAddrForm.label" placeholder="Head Office, Warehouse..." /></div>
+            <div class="form-field"><label>Type</label>
+              <select [(ngModel)]="vendAddrForm.addressType">
+                <option value="Billing">Billing</option>
+                <option value="RemitTo">Remit-To</option>
+                <option value="Shipping">Shipping</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-field"><label>Country</label><input [(ngModel)]="vendAddrForm.country" /></div>
+            <div class="form-field" style="grid-column:1/-1"><label>Line 1 *</label><input [(ngModel)]="vendAddrForm.line1" /></div>
+            <div class="form-field" style="grid-column:1/-1"><label>Line 2</label><input [(ngModel)]="vendAddrForm.line2" /></div>
+            <div class="form-field"><label>City *</label><input [(ngModel)]="vendAddrForm.city" /></div>
+            <div class="form-field"><label>State</label><input [(ngModel)]="vendAddrForm.state" /></div>
+            <div class="form-field"><label>Postal Code</label><input [(ngModel)]="vendAddrForm.postalCode" /></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" (click)="saveVendAddr()">Save</button>
+            <button class="btn-ghost-sm" (click)="cancelVendAddrForm()">Cancel</button>
+          </div>
+        </div>
+        <div class="addr-cards-grid" *ngIf="vendAddresses.length">
+          <div class="addr-card-full" *ngFor="let a of vendAddresses" [class.primary-card]="a.isPrimary">
+            <div class="addr-card-head">
+              <span class="addr-type-badge">{{ a.addressType }}</span>
+              <span class="addr-label-text">{{ a.label }}</span>
+              <span class="primary-badge" *ngIf="a.isPrimary">★ Primary</span>
+            </div>
+            <div class="addr-body">{{ a.singleLine }}</div>
+            <div class="addr-actions">
+              <button class="btn-ghost-sm" (click)="editVendAddr(a)">Edit</button>
+              <button class="btn-ghost-sm" (click)="setPrimaryVendAddr(a.id)" *ngIf="!a.isPrimary">Set Primary</button>
+              <button class="btn-ghost-sm danger" (click)="deleteVendAddr(a.id)">Delete</button>
+            </div>
+          </div>
+        </div>
+        <div class="empty muted" *ngIf="!vendAddresses.length && !showVendAddrForm">No addresses added yet.</div>
+
+        <!-- Contacts section -->
+        <div class="section-header-row" style="margin-top:12px">
+          <span class="sub-section-title">👤 Contacts</span>
+          <button class="btn-primary-sm" (click)="openVendContactForm()">+ Add</button>
+        </div>
+        <div class="inline-form" *ngIf="showVendContactForm">
+          <div class="form-grid-3">
+            <div class="form-field"><label>Name *</label><input [(ngModel)]="vendContactForm.name" /></div>
+            <div class="form-field"><label>Title</label><input [(ngModel)]="vendContactForm.title" /></div>
+            <div class="form-field"><label>Email</label><input [(ngModel)]="vendContactForm.email" type="email" /></div>
+            <div class="form-field"><label>Phone</label><input [(ngModel)]="vendContactForm.phone" /></div>
+            <div class="form-field"><label>Mobile</label><input [(ngModel)]="vendContactForm.mobile" /></div>
+            <div class="form-field" style="grid-column:1/-1"><label>Notes</label><input [(ngModel)]="vendContactForm.notes" /></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" (click)="saveVendContact()">Save</button>
+            <button class="btn-ghost-sm" (click)="cancelVendContactForm()">Cancel</button>
+          </div>
+        </div>
+        <div class="contacts-list" *ngIf="vendContacts.length">
+          <div class="contact-row" *ngFor="let c of vendContacts" [class.primary-card]="c.isPrimary">
+            <div class="contact-info">
+              <span class="contact-name">{{ c.name }}</span>
+              <span class="contact-title muted" *ngIf="c.title"> · {{ c.title }}</span>
+              <span class="primary-badge" *ngIf="c.isPrimary">★</span>
+            </div>
+            <div class="contact-details">
+              <span *ngIf="c.email">✉ {{ c.email }}</span>
+              <span *ngIf="c.phone">📞 {{ c.phone }}</span>
+              <span *ngIf="c.mobile">📱 {{ c.mobile }}</span>
+            </div>
+            <div class="addr-actions">
+              <button class="btn-ghost-sm" (click)="editVendContact(c)">Edit</button>
+              <button class="btn-ghost-sm" (click)="setPrimaryVendContact(c.id)" *ngIf="!c.isPrimary">Set Primary</button>
+              <button class="btn-ghost-sm danger" (click)="deleteVendContact(c.id)">Delete</button>
+            </div>
+          </div>
+        </div>
+        <div class="empty muted" *ngIf="!vendContacts.length && !showVendContactForm">No contacts added yet.</div>
+
+        <!-- Bank details -->
+        <div class="info-grid">
+          <div class="info-item"><span class="info-label">Bank Account</span><span>{{ selectedVend.bankAccountName || '—' }}</span></div>
+          <div class="info-item"><span class="info-label">Account #</span><span>{{ selectedVend.bankAccountNumber || '—' }}</span></div>
+          <div class="info-item"><span class="info-label">Routing #</span><span>{{ selectedVend.bankRoutingNumber || '—' }}</span></div>
+          <div class="info-item" *ngIf="selectedVend.website"><span class="info-label">Website</span><a [href]="selectedVend.website" target="_blank">{{ selectedVend.website }}</a></div>
+        </div>
+        <div *ngIf="selectedVend.notes" class="info-grid">
+          <div class="info-item" style="grid-column:1/-1"><span class="info-label">Notes</span><span>{{ selectedVend.notes }}</span></div>
+        </div>
+
+        <!-- Vendor Ledger -->
+        <div class="sub-section-header" (click)="toggleVendLedger()">
+          <span class="sub-section-title">📒 Account Statement</span>
+          <span class="toggle-icon">{{ showVendLedger ? '▲' : '▼' }}</span>
+        </div>
+        <div *ngIf="showVendLedger && vendLedger">
+          <div class="ledger-summary">
+            <span>Total Invoiced: <strong>{{ vendLedger.totalInvoiced | currency }}</strong></span>
+            <span>Total Paid: <strong class="ok">{{ vendLedger.totalPaid | currency }}</strong></span>
+            <span>Outstanding: <strong [class.neg]="vendLedger.outstandingPayable > 0">{{ vendLedger.outstandingPayable | currency }}</strong></span>
+          </div>
+          <table class="data-table">
+            <thead><tr>
+              <th>Type</th><th>Reference</th><th>Date</th>
+              <th class="num">Debit (Out)</th><th class="num">Credit (In)</th>
+              <th class="num">Balance</th><th>PO</th><th>Status</th>
+            </tr></thead>
+            <tbody>
+              <tr *ngFor="let e of vendLedger.entries" [class.ledger-payment]="e.entryType === 'Payment'">
+                <td><span class="badge" [class]="e.entryType === 'Payment' ? 'badge-ok' : 'badge-inv'">{{ e.entryType }}</span></td>
+                <td>{{ e.reference }}</td>
+                <td>{{ e.date | date:'MMM d, y' }}</td>
+                <td class="num" [class.neg]="e.debit > 0">{{ e.debit > 0 ? (e.debit | currency) : '—' }}</td>
+                <td class="num" [class.ok]="e.credit > 0">{{ e.credit > 0 ? (e.credit | currency) : '—' }}</td>
+                <td class="num" [class.neg]="e.runningBalance > 0"><strong>{{ e.runningBalance | currency }}</strong></td>
+                <td class="muted">{{ e.poNumber || '—' }}</td>
+                <td>{{ e.status }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div *ngIf="!vendLedger.entries.length" class="empty">No transactions yet.</div>
         </div>
       </div>
       <div class="detail-panel empty-detail" *ngIf="!selectedVend">Select a vendor to view details.</div>
@@ -636,6 +786,47 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     .match-card-warn { border-color: #fca5a5; background: #fff5f5; }
     .match-header { font-weight: 600; margin-bottom: .35rem; }
     .match-notes { color: #64748b; font-size: .8rem; font-family: monospace; white-space: pre-wrap; }
+
+    /* Vendor profile */
+    .balance-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; background:#1e293b; border-radius:10px; padding:1rem 1.25rem; margin-bottom:1rem; }
+    .balance-cell { display:flex; flex-direction:column; gap:.2rem; }
+    .balance-label { font-size:.7rem; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em; }
+    .balance-val { font-size:1rem; font-weight:700; color:#f1f5f9; }
+    .balance-val.neg { color:#f87171; }
+    .balance-val.ok { color:#4ade80; }
+    .addr-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:1rem; }
+    .addr-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.75rem 1rem; }
+    .addr-label { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#64748b; margin-bottom:.35rem; }
+    .addr-body { font-size:.85rem; color:#1e293b; line-height:1.5; }
+    .sub-section-header { display:flex; justify-content:space-between; align-items:center; background:#f1f5f9; border-radius:8px; padding:.5rem .75rem; cursor:pointer; margin:.75rem 0 .4rem; user-select:none; }
+    .sub-section-title { font-size:.85rem; font-weight:700; color:#334155; margin:0; }
+    .toggle-icon { font-size:.75rem; color:#64748b; }
+    .ledger-summary { display:flex; gap:1.5rem; font-size:.85rem; padding:.5rem 0; border-bottom:1px solid #e2e8f0; margin-bottom:.5rem; }
+    .ledger-payment td { background:#f0fdf4; }
+    .badge-ok { background:#dcfce7; color:#166534; }
+    .badge-inv { background:#eff6ff; color:#1d4ed8; }
+    .num { text-align:right; }
+    .muted { color:#94a3b8; font-size:.8rem; }
+    .btn-ghost-sm.danger { color:#ef4444; border-color:#fca5a5; }
+    .btn-ghost-sm.danger:hover { background:#fef2f2; }
+    .section-header-row { display:flex; justify-content:space-between; align-items:center; margin:.75rem 0 .4rem; }
+    .inline-form { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:1rem; margin-bottom:.75rem; }
+    .form-grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; }
+    .addr-cards-grid { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; margin-bottom:.5rem; }
+    .addr-card-full { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.75rem; }
+    .addr-card-full.primary-card { border-color:#1d4ed8; background:#eff6ff; }
+    .addr-card-head { display:flex; gap:.5rem; align-items:center; margin-bottom:.4rem; flex-wrap:wrap; }
+    .addr-type-badge { background:#e2e8f0; color:#475569; font-size:.65rem; font-weight:700; padding:.15rem .4rem; border-radius:4px; text-transform:uppercase; }
+    .addr-label-text { font-weight:600; font-size:.85rem; color:#1e293b; flex:1; }
+    .primary-badge { background:#dbeafe; color:#1d4ed8; font-size:.65rem; font-weight:700; padding:.15rem .4rem; border-radius:4px; }
+    .addr-actions { display:flex; gap:.4rem; margin-top:.5rem; flex-wrap:wrap; }
+    .contacts-list { display:flex; flex-direction:column; gap:.5rem; margin-bottom:.5rem; }
+    .contact-row { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.65rem .75rem; }
+    .contact-row.primary-card { border-color:#1d4ed8; background:#eff6ff; }
+    .contact-info { display:flex; align-items:center; gap:.4rem; margin-bottom:.3rem; flex-wrap:wrap; }
+    .contact-name { font-weight:600; font-size:.9rem; color:#1e293b; }
+    .contact-title { font-size:.8rem; }
+    .contact-details { display:flex; gap:.8rem; font-size:.8rem; color:#475569; margin-bottom:.4rem; flex-wrap:wrap; }
   `]
 })
 export class AccountsPayableComponent implements OnInit {
@@ -655,7 +846,23 @@ export class AccountsPayableComponent implements OnInit {
   vendSearch = '';
   showVendForm = false;
   editVend: Vendor | null = null;
-  vendForm = { name:'', email:'', phone:'', address:'', taxId:'', paymentTermsDays: 30, currency:'USD', bankAccountName:'', bankAccountNumber:'' };
+  vendForm = { name:'', email:'', phone:'', taxId:'', paymentTermsDays: 30, currency:'USD',
+             billingAddress:'', shippingAddress:'', bankAccountName:'', bankAccountNumber:'',
+             bankRoutingNumber:'', website:'', notes:'' };
+  vendLedger: VendorLedger | null = null;
+  showVendLedger = false;
+
+  // Vendor Addresses
+  vendAddresses: any[] = [];
+  showVendAddrForm = false;
+  editingVendAddrId: string | null = null;
+  vendAddrForm = { label:'', addressType:'Billing' as string, line1:'', line2:'', city:'', state:'', postalCode:'', country:'US' };
+
+  // Vendor Contacts
+  vendContacts: any[] = [];
+  showVendContactForm = false;
+  editingVendContactId: string | null = null;
+  vendContactForm = { name:'', title:'', email:'', phone:'', mobile:'', notes:'' };
 
   // Purchase Orders
   purchaseOrders: PurchaseOrderSummary[] = [];
@@ -732,18 +939,136 @@ export class AccountsPayableComponent implements OnInit {
 
   openCreateVend() {
     this.editVend = null;
-    this.vendForm = { name:'', email:'', phone:'', address:'', taxId:'', paymentTermsDays: 30, currency:'USD', bankAccountName:'', bankAccountNumber:'' };
+    this.vendForm = { name:'', email:'', phone:'', taxId:'', paymentTermsDays: 30, currency:'USD',
+      billingAddress:'', shippingAddress:'', bankAccountName:'', bankAccountNumber:'',
+      bankRoutingNumber:'', website:'', notes:'' };
     this.showVendForm = true;
   }
 
   openEditVend(v: Vendor) {
     this.editVend = v;
     this.vendForm = {
-      name: v.name, email: v.email ?? '', phone: v.phone ?? '', address: v.address ?? '',
+      name: v.name, email: v.email ?? '', phone: v.phone ?? '',
       taxId: v.taxId ?? '', paymentTermsDays: v.paymentTermsDays, currency: v.currency,
-      bankAccountName: v.bankAccountName ?? '', bankAccountNumber: v.bankAccountNumber ?? ''
+      billingAddress: v.billingAddress ?? '', shippingAddress: v.shippingAddress ?? '',
+      bankAccountName: v.bankAccountName ?? '', bankAccountNumber: v.bankAccountNumber ?? '',
+      bankRoutingNumber: v.bankRoutingNumber ?? '', website: v.website ?? '', notes: v.notes ?? ''
     };
     this.showVendForm = true;
+  }
+
+  selectVendor(v: Vendor) {
+    this.selectedVend = v;
+    this.vendLedger = null;
+    this.showVendLedger = false;
+    this.vendAddresses = [];
+    this.vendContacts = [];
+    this.showVendAddrForm = false;
+    this.showVendContactForm = false;
+    this.api.getVendorAddresses(v.id).subscribe(d => this.vendAddresses = d);
+    this.api.getVendorContacts(v.id).subscribe(d => this.vendContacts = d);
+  }
+
+  loadVendLedger(id: string) {
+    if (this.vendLedger?.vendorId === id) { this.showVendLedger = !this.showVendLedger; return; }
+    this.api.getVendorLedger(id).subscribe(d => {
+      this.vendLedger = d;
+      this.showVendLedger = true;
+    });
+  }
+
+  toggleVendLedger() { this.showVendLedger = !this.showVendLedger; }
+
+  // ── Vendor Address CRUD ───────────────────────────────────────────────────
+  openVendAddrForm() {
+    this.editingVendAddrId = null;
+    this.vendAddrForm = { label:'', addressType:'Billing', line1:'', line2:'', city:'', state:'', postalCode:'', country:'US' };
+    this.showVendAddrForm = true;
+  }
+
+  editVendAddr(a: any) {
+    this.editingVendAddrId = a.id;
+    this.vendAddrForm = { label: a.label, addressType: a.addressType, line1: a.line1, line2: a.line2 ?? '',
+      city: a.city, state: a.state ?? '', postalCode: a.postalCode ?? '', country: a.country };
+    this.showVendAddrForm = true;
+  }
+
+  saveVendAddr() {
+    if (!this.selectedVend || !this.vendAddrForm.label.trim() || !this.vendAddrForm.line1.trim() || !this.vendAddrForm.city.trim()) return;
+    const req = { ...this.vendAddrForm };
+    if (this.editingVendAddrId) {
+      this.api.updateVendorAddress(this.selectedVend.id, this.editingVendAddrId, req).subscribe(d => {
+        this.vendAddresses = this.vendAddresses.map(a => a.id === d.id ? d : a);
+        this.cancelVendAddrForm();
+      });
+    } else {
+      this.api.createVendorAddress(this.selectedVend.id, req).subscribe(d => {
+        this.vendAddresses = [...this.vendAddresses, d];
+        this.cancelVendAddrForm();
+      });
+    }
+  }
+
+  cancelVendAddrForm() { this.showVendAddrForm = false; this.editingVendAddrId = null; }
+
+  deleteVendAddr(id: string) {
+    if (!this.selectedVend || !confirm('Delete this address?')) return;
+    this.api.deleteVendorAddress(this.selectedVend.id, id).subscribe(() => {
+      this.vendAddresses = this.vendAddresses.filter(a => a.id !== id);
+    });
+  }
+
+  setPrimaryVendAddr(id: string) {
+    if (!this.selectedVend) return;
+    this.api.setPrimaryVendorAddress(this.selectedVend.id, id).subscribe(() => {
+      this.vendAddresses = this.vendAddresses.map(a => ({ ...a, isPrimary: a.id === id }));
+    });
+  }
+
+  // ── Vendor Contact CRUD ───────────────────────────────────────────────────
+  openVendContactForm() {
+    this.editingVendContactId = null;
+    this.vendContactForm = { name:'', title:'', email:'', phone:'', mobile:'', notes:'' };
+    this.showVendContactForm = true;
+  }
+
+  editVendContact(c: any) {
+    this.editingVendContactId = c.id;
+    this.vendContactForm = { name: c.name, title: c.title ?? '', email: c.email ?? '',
+      phone: c.phone ?? '', mobile: c.mobile ?? '', notes: c.notes ?? '' };
+    this.showVendContactForm = true;
+  }
+
+  saveVendContact() {
+    if (!this.selectedVend || !this.vendContactForm.name.trim()) return;
+    const req = { ...this.vendContactForm };
+    if (this.editingVendContactId) {
+      this.api.updateVendorContact(this.selectedVend.id, this.editingVendContactId, req).subscribe(d => {
+        this.vendContacts = this.vendContacts.map(c => c.id === d.id ? d : c);
+        this.cancelVendContactForm();
+      });
+    } else {
+      this.api.createVendorContact(this.selectedVend.id, req).subscribe(d => {
+        this.vendContacts = [...this.vendContacts, d];
+        this.cancelVendContactForm();
+      });
+    }
+  }
+
+  cancelVendContactForm() { this.showVendContactForm = false; this.editingVendContactId = null; }
+
+  deleteVendContact(id: string) {
+    if (!this.selectedVend || !confirm('Delete this contact?')) return;
+    this.api.deleteVendorContact(this.selectedVend.id, id).subscribe(() => {
+      this.vendContacts = this.vendContacts.filter(c => c.id !== id);
+    });
+  }
+
+  setPrimaryVendContact(id: string) {
+    if (!this.selectedVend) return;
+    this.api.setPrimaryVendorContact(this.selectedVend.id, id).subscribe(() => {
+      this.vendContacts = this.vendContacts.map(c => ({ ...c, isPrimary: c.id === id }));
+    });
   }
 
   saveVendor() {

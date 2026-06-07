@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { Customer, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport, VariantLookup } from '../../core/models/erp.models';
+import { Customer, CustomerAddress, CustomerContact, CustomerLedger, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport, VariantLookup } from '../../core/models/erp.models';
 
 type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
 
@@ -27,45 +27,208 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
   <div *ngIf="activeTab === 'customers'" class="tab-content">
     <div class="toolbar">
       <input [(ngModel)]="custSearch" placeholder="Search customers…" class="search-input" />
-      <button class="btn-primary" (click)="showCreateCust = true">+ New Customer</button>
+      <button class="btn-primary" (click)="openCreateCust()">+ New Customer</button>
     </div>
-    <div *ngIf="showCreateCust" class="form-card">
-      <div class="form-title">New Customer</div>
+
+    <div *ngIf="showCustForm" class="form-card">
+      <div class="form-title">{{ editCust ? 'Edit Customer' : 'New Customer' }}</div>
       <div class="form-grid">
-        <div class="form-field"><label>Name</label><input [(ngModel)]="custForm.name" /></div>
-        <div class="form-field"><label>Email</label><input [(ngModel)]="custForm.email" /></div>
+        <div class="form-field"><label>Name *</label><input [(ngModel)]="custForm.name" /></div>
+        <div class="form-field"><label>Email</label><input [(ngModel)]="custForm.email" type="email" /></div>
         <div class="form-field"><label>Phone</label><input [(ngModel)]="custForm.phone" /></div>
+        <div class="form-field"><label>Currency</label><input [(ngModel)]="custForm.currency" /></div>
         <div class="form-field"><label>Payment Terms (days)</label><input type="number" [(ngModel)]="custForm.paymentTermsDays" /></div>
         <div class="form-field"><label>Credit Limit</label><input type="number" [(ngModel)]="custForm.creditLimit" /></div>
-        <div class="form-field"><label>Currency</label><input [(ngModel)]="custForm.currency" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Billing Address</label><input [(ngModel)]="custForm.billingAddress" placeholder="Street, City, State, ZIP" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Shipping Address</label><input [(ngModel)]="custForm.shippingAddress" placeholder="Same as billing if empty" /></div>
+        <div class="form-field"><label>Website</label><input [(ngModel)]="custForm.website" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Notes</label><input [(ngModel)]="custForm.notes" /></div>
       </div>
       <div class="form-actions">
-        <button class="btn-primary" (click)="createCustomer()">Create</button>
-        <button class="btn-ghost" (click)="showCreateCust = false">Cancel</button>
+        <button class="btn-primary" (click)="saveCustomer()">{{ editCust ? 'Save Changes' : 'Create' }}</button>
+        <button class="btn-ghost" (click)="showCustForm = false; editCust = null">Cancel</button>
       </div>
     </div>
+
     <div class="split">
       <div class="list-panel">
-        <div *ngFor="let c of filteredCustomers" class="list-row" [class.active]="selectedCust?.id === c.id" (click)="selectedCust = c">
+        <div *ngFor="let c of filteredCustomers" class="list-row" [class.active]="selectedCust?.id === c.id" (click)="selectCustomer(c)">
           <div class="row-main"><strong>{{ c.name }}</strong><span class="badge" [class]="'badge-' + c.status.toLowerCase()">{{ c.status }}</span></div>
           <div class="row-sub">{{ c.customerNumber }} · {{ c.email || 'No email' }}</div>
+          <div class="row-sub" *ngIf="c.outstandingBalance > 0" style="color:#dc2626">Balance: {{ c.outstandingBalance | currency }}</div>
         </div>
         <div *ngIf="!filteredCustomers.length" class="empty">No customers.</div>
       </div>
+
       <div class="detail-panel" *ngIf="selectedCust">
-        <div class="detail-header"><div class="detail-title">{{ selectedCust.name }}</div></div>
+        <div class="detail-header">
+          <div class="detail-title">{{ selectedCust.name }}</div>
+          <div class="action-row">
+            <button class="btn-primary-sm" (click)="openEditCust(selectedCust)">✏️ Edit</button>
+            <button class="btn-ghost-sm" (click)="loadCustLedger(selectedCust.id)">📒 Statement</button>
+          </div>
+        </div>
+
+        <!-- Balance strip -->
+        <div class="balance-strip">
+          <div class="balance-cell">
+            <span class="balance-label">Outstanding</span>
+            <span class="balance-val" [class.neg]="selectedCust.outstandingBalance > 0">{{ selectedCust.outstandingBalance | currency }}</span>
+          </div>
+          <div class="balance-cell">
+            <span class="balance-label">Credit Limit</span>
+            <span class="balance-val">{{ selectedCust.creditLimit | currency }}</span>
+          </div>
+          <div class="balance-cell">
+            <span class="balance-label">Available</span>
+            <span class="balance-val" [class.ok]="selectedCust.creditAvailable > 0">{{ selectedCust.creditAvailable | currency }}</span>
+          </div>
+          <div class="balance-cell">
+            <span class="balance-label">Terms</span>
+            <span class="balance-val">{{ selectedCust.paymentTermsDays }}d</span>
+          </div>
+        </div>
+
+        <!-- Core info -->
         <div class="info-grid">
           <div class="info-item"><span class="info-label">Customer #</span><span>{{ selectedCust.customerNumber }}</span></div>
           <div class="info-item"><span class="info-label">Email</span><span>{{ selectedCust.email || '—' }}</span></div>
           <div class="info-item"><span class="info-label">Phone</span><span>{{ selectedCust.phone || '—' }}</span></div>
           <div class="info-item"><span class="info-label">Currency</span><span>{{ selectedCust.currency }}</span></div>
-          <div class="info-item"><span class="info-label">Payment Terms</span><span>{{ selectedCust.paymentTermsDays }} days</span></div>
-          <div class="info-item"><span class="info-label">Credit Limit</span><span>{{ selectedCust.creditLimit | currency }}</span></div>
           <div class="info-item"><span class="info-label">Status</span><span class="badge" [class]="'badge-' + selectedCust.status.toLowerCase()">{{ selectedCust.status }}</span></div>
           <div class="info-item"><span class="info-label">Since</span><span>{{ selectedCust.createdAt | date:'mediumDate' }}</span></div>
         </div>
+
+        <!-- Addresses section -->
+        <div class="section-header-row">
+          <span class="sub-section-title">📍 Addresses</span>
+          <button class="btn-primary-sm" (click)="openAddressForm()">+ Add Address</button>
+        </div>
+
+        <!-- Address form (inline) -->
+        <div class="inline-form" *ngIf="showAddrForm">
+          <div class="form-grid-3">
+            <div class="form-field"><label>Label *</label><input [(ngModel)]="addrForm.label" placeholder="Head Office, Warehouse..." /></div>
+            <div class="form-field"><label>Type</label>
+              <select [(ngModel)]="addrForm.addressType">
+                <option value="Billing">Billing</option>
+                <option value="Shipping">Shipping</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-field"><label>Country</label><input [(ngModel)]="addrForm.country" placeholder="US" /></div>
+            <div class="form-field" style="grid-column:1/-1"><label>Line 1 *</label><input [(ngModel)]="addrForm.line1" /></div>
+            <div class="form-field" style="grid-column:1/-1"><label>Line 2</label><input [(ngModel)]="addrForm.line2" /></div>
+            <div class="form-field"><label>City *</label><input [(ngModel)]="addrForm.city" /></div>
+            <div class="form-field"><label>State</label><input [(ngModel)]="addrForm.state" /></div>
+            <div class="form-field"><label>Postal Code</label><input [(ngModel)]="addrForm.postalCode" /></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" (click)="saveAddress()">Save</button>
+            <button class="btn-ghost-sm" (click)="cancelAddressForm()">Cancel</button>
+          </div>
+        </div>
+
+        <div class="addr-cards-grid" *ngIf="custAddresses.length">
+          <div class="addr-card-full" *ngFor="let a of custAddresses" [class.primary-card]="a.isPrimary">
+            <div class="addr-card-head">
+              <span class="addr-type-badge">{{ a.addressType }}</span>
+              <span class="addr-label-text">{{ a.label }}</span>
+              <span class="primary-badge" *ngIf="a.isPrimary">★ Primary</span>
+            </div>
+            <div class="addr-body">{{ a.singleLine }}</div>
+            <div class="addr-actions">
+              <button class="btn-ghost-sm" (click)="editAddress(a)">Edit</button>
+              <button class="btn-ghost-sm" (click)="setPrimaryAddress(a.id)" *ngIf="!a.isPrimary">Set Primary</button>
+              <button class="btn-ghost-sm danger" (click)="deleteAddress(a.id)">Delete</button>
+            </div>
+          </div>
+        </div>
+        <div class="empty muted" *ngIf="!custAddresses.length && !showAddrForm">No addresses added yet.</div>
+
+        <!-- Contacts section -->
+        <div class="section-header-row" style="margin-top:12px">
+          <span class="sub-section-title">👤 Contacts</span>
+          <button class="btn-primary-sm" (click)="openContactForm()">+ Add Contact</button>
+        </div>
+
+        <!-- Contact form (inline) -->
+        <div class="inline-form" *ngIf="showContactForm">
+          <div class="form-grid-3">
+            <div class="form-field"><label>Name *</label><input [(ngModel)]="contactForm.name" /></div>
+            <div class="form-field"><label>Title</label><input [(ngModel)]="contactForm.title" placeholder="AP Manager, Sales Rep..." /></div>
+            <div class="form-field"><label>Email</label><input [(ngModel)]="contactForm.email" type="email" /></div>
+            <div class="form-field"><label>Phone</label><input [(ngModel)]="contactForm.phone" /></div>
+            <div class="form-field"><label>Mobile</label><input [(ngModel)]="contactForm.mobile" /></div>
+            <div class="form-field" style="grid-column:1/-1"><label>Notes</label><input [(ngModel)]="contactForm.notes" /></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" (click)="saveContact()">Save</button>
+            <button class="btn-ghost-sm" (click)="cancelContactForm()">Cancel</button>
+          </div>
+        </div>
+
+        <div class="contacts-list" *ngIf="custContacts.length">
+          <div class="contact-row" *ngFor="let c of custContacts" [class.primary-card]="c.isPrimary">
+            <div class="contact-info">
+              <span class="contact-name">{{ c.name }}</span>
+              <span class="contact-title muted" *ngIf="c.title"> · {{ c.title }}</span>
+              <span class="primary-badge" *ngIf="c.isPrimary">★</span>
+            </div>
+            <div class="contact-details">
+              <span *ngIf="c.email">✉ {{ c.email }}</span>
+              <span *ngIf="c.phone">📞 {{ c.phone }}</span>
+              <span *ngIf="c.mobile">📱 {{ c.mobile }}</span>
+            </div>
+            <div class="addr-actions">
+              <button class="btn-ghost-sm" (click)="editContact(c)">Edit</button>
+              <button class="btn-ghost-sm" (click)="setPrimaryContact(c.id)" *ngIf="!c.isPrimary">Set Primary</button>
+              <button class="btn-ghost-sm danger" (click)="deleteContact(c.id)">Delete</button>
+            </div>
+          </div>
+        </div>
+        <div class="empty muted" *ngIf="!custContacts.length && !showContactForm">No contacts added yet.</div>
+
+        <div class="info-grid" *ngIf="selectedCust.website || selectedCust.notes">
+          <div class="info-item" *ngIf="selectedCust.website"><span class="info-label">Website</span><a [href]="selectedCust.website" target="_blank">{{ selectedCust.website }}</a></div>
+          <div class="info-item" *ngIf="selectedCust.notes" style="grid-column:1/-1"><span class="info-label">Notes</span><span>{{ selectedCust.notes }}</span></div>
+        </div>
+
+        <!-- Account Statement ledger -->
+        <div class="sub-section-header" (click)="toggleCustLedger()">
+          <span class="sub-section-title">📒 Account Statement</span>
+          <span class="toggle-icon">{{ showCustLedger ? '▲' : '▼' }}</span>
+        </div>
+        <div *ngIf="showCustLedger && custLedger">
+          <div class="ledger-summary">
+            <span>Total Invoiced: <strong>{{ custLedger.totalInvoiced | currency }}</strong></span>
+            <span>Total Paid: <strong class="ok">{{ custLedger.totalPaid | currency }}</strong></span>
+            <span>Outstanding: <strong [class.neg]="custLedger.outstandingBalance > 0">{{ custLedger.outstandingBalance | currency }}</strong></span>
+          </div>
+          <table class="data-table">
+            <thead><tr>
+              <th>Type</th><th>Reference</th><th>Date</th>
+              <th class="num">Debit</th><th class="num">Credit</th>
+              <th class="num">Balance</th><th>Order</th><th>Status</th>
+            </tr></thead>
+            <tbody>
+              <tr *ngFor="let e of custLedger.entries" [class.ledger-payment]="e.entryType === 'Payment'">
+                <td><span class="badge" [class]="e.entryType === 'Payment' ? 'badge-ok' : 'badge-inv'">{{ e.entryType }}</span></td>
+                <td>{{ e.reference }}</td>
+                <td>{{ e.date | date:'MMM d, y' }}</td>
+                <td class="num" [class.neg]="e.debit > 0">{{ e.debit > 0 ? (e.debit | currency) : '—' }}</td>
+                <td class="num" [class.ok]="e.credit > 0">{{ e.credit > 0 ? (e.credit | currency) : '—' }}</td>
+                <td class="num" [class.neg]="e.runningBalance > 0"><strong>{{ e.runningBalance | currency }}</strong></td>
+                <td class="muted">{{ e.salesOrderNumber || '—' }}</td>
+                <td>{{ e.status }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div *ngIf="!custLedger.entries.length" class="empty">No transactions yet.</div>
+        </div>
       </div>
-      <div class="detail-panel empty-detail" *ngIf="!selectedCust">Select a customer.</div>
+
+      <div class="detail-panel empty-detail" *ngIf="!selectedCust">Select a customer to view details.</div>
     </div>
   </div>
 
@@ -438,6 +601,51 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
     .variant-qty { margin-left: .35rem; color: #6b7280; font-size: .8rem; }
     .selected-variant-chip { display: inline-flex; align-items: center; gap: .35rem; background: #dbeafe; color: #1e40af; padding: .3rem .6rem; border-radius: 9999px; font-size: .82rem; font-weight: 500; }
     .add-line-row { position: relative; }
+    /* Customer profile */
+    .balance-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; background:#1e293b; border-radius:10px; padding:1rem 1.25rem; margin-bottom:1rem; }
+    .balance-cell { display:flex; flex-direction:column; gap:.2rem; }
+    .balance-label { font-size:.7rem; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em; }
+    .balance-val { font-size:1rem; font-weight:700; color:#f1f5f9; }
+    .balance-val.neg { color:#f87171; }
+    .balance-val.ok { color:#4ade80; }
+    .addr-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:1rem; }
+    .addr-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.75rem 1rem; }
+    .addr-label { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#64748b; margin-bottom:.35rem; }
+    .addr-body { font-size:.85rem; color:#1e293b; line-height:1.5; }
+    .sub-section-header { display:flex; justify-content:space-between; align-items:center; background:#f1f5f9; border-radius:8px; padding:.5rem .75rem; cursor:pointer; margin:.75rem 0 .4rem; user-select:none; }
+    .sub-section-title { font-size:.85rem; font-weight:700; color:#334155; margin:0; }
+    .toggle-icon { font-size:.75rem; color:#64748b; }
+    .ledger-summary { display:flex; gap:1.5rem; font-size:.85rem; padding:.5rem 0; border-bottom:1px solid #e2e8f0; margin-bottom:.5rem; }
+    .ledger-payment td { background:#f0fdf4; }
+    .badge-ok { background:#dcfce7; color:#166534; }
+    .badge-inv { background:#eff6ff; color:#1d4ed8; }
+    .num { text-align:right; }
+    .muted { color:#94a3b8; font-size:.8rem; }
+    .btn-primary-sm { background:#3b82f6; color:#fff; border:none; padding:.3rem .7rem; border-radius:6px; cursor:pointer; font-size:.8rem; }
+    .btn-ghost-sm { background:transparent; border:1px solid #cbd5e1; color:#475569; padding:.3rem .7rem; border-radius:6px; cursor:pointer; font-size:.8rem; }
+    .btn-primary-sm:hover { background:#2563eb; }
+    .btn-ghost-sm:hover { background:#f1f5f9; }
+    .btn-ghost-sm.danger { color:#ef4444; border-color:#fca5a5; }
+    .btn-ghost-sm.danger:hover { background:#fef2f2; }
+    .section-header-row { display:flex; justify-content:space-between; align-items:center; margin:.75rem 0 .4rem; }
+    .inline-form { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:1rem; margin-bottom:.75rem; }
+    .form-grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; }
+    .form-actions { display:flex; gap:.5rem; margin-top:.75rem; }
+    .addr-cards-grid { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; margin-bottom:.5rem; }
+    .addr-card-full { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.75rem; }
+    .addr-card-full.primary-card { border-color:#3b82f6; background:#eff6ff; }
+    .addr-card-head { display:flex; gap:.5rem; align-items:center; margin-bottom:.4rem; flex-wrap:wrap; }
+    .addr-type-badge { background:#e2e8f0; color:#475569; font-size:.65rem; font-weight:700; padding:.15rem .4rem; border-radius:4px; text-transform:uppercase; }
+    .addr-label-text { font-weight:600; font-size:.85rem; color:#1e293b; flex:1; }
+    .primary-badge { background:#dbeafe; color:#1d4ed8; font-size:.65rem; font-weight:700; padding:.15rem .4rem; border-radius:4px; }
+    .addr-actions { display:flex; gap:.4rem; margin-top:.5rem; flex-wrap:wrap; }
+    .contacts-list { display:flex; flex-direction:column; gap:.5rem; margin-bottom:.5rem; }
+    .contact-row { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.65rem .75rem; }
+    .contact-row.primary-card { border-color:#3b82f6; background:#eff6ff; }
+    .contact-info { display:flex; align-items:center; gap:.4rem; margin-bottom:.3rem; flex-wrap:wrap; }
+    .contact-name { font-weight:600; font-size:.9rem; color:#1e293b; }
+    .contact-title { font-size:.8rem; }
+    .contact-details { display:flex; gap:.8rem; font-size:.8rem; color:#475569; margin-bottom:.4rem; flex-wrap:wrap; }
   `]
 })
 export class AccountsReceivableComponent implements OnInit {
@@ -454,8 +662,24 @@ export class AccountsReceivableComponent implements OnInit {
   customers: Customer[] = [];
   selectedCust: Customer | null = null;
   custSearch = '';
-  showCreateCust = false;
-  custForm = { name:'', email:'', phone:'', paymentTermsDays: 30, creditLimit: 10000, currency: 'USD' };
+  showCustForm = false;
+  editCust: Customer | null = null;
+  custForm = { name:'', email:'', phone:'', currency:'USD', paymentTermsDays: 30, creditLimit: 10000,
+               billingAddress:'', shippingAddress:'', website:'', notes:'' };
+  custLedger: CustomerLedger | null = null;
+  showCustLedger = false;
+
+  // Address management
+  custAddresses: any[] = [];
+  showAddrForm = false;
+  editingAddrId: string | null = null;
+  addrForm = { label:'', addressType:'Billing' as string, line1:'', line2:'', city:'', state:'', postalCode:'', country:'US' };
+
+  // Contact management
+  custContacts: any[] = [];
+  showContactForm = false;
+  editingContactId: string | null = null;
+  contactForm = { name:'', title:'', email:'', phone:'', mobile:'', notes:'' };
 
   salesOrders: SalesOrderSummary[] = [];
   selectedOrder: SalesOrder | null = null;
@@ -581,11 +805,157 @@ export class AccountsReceivableComponent implements OnInit {
 
   setTab(t: Tab) { this.activeTab = t; }
 
-  createCustomer() {
-    this.api.createCustomer(this.custForm).subscribe(d => {
-      this.customers = [...this.customers, d];
-      this.showCreateCust = false;
-      this.custForm = { name:'', email:'', phone:'', paymentTermsDays: 30, creditLimit: 10000, currency: 'USD' };
+  private blankCustForm() {
+    return { name:'', email:'', phone:'', currency:'USD', paymentTermsDays: 30, creditLimit: 10000,
+             billingAddress:'', shippingAddress:'', website:'', notes:'' };
+  }
+
+  openCreateCust() {
+    this.editCust = null;
+    this.custForm = this.blankCustForm();
+    this.showCustForm = true;
+  }
+
+  selectCustomer(c: Customer) {
+    this.selectedCust = c;
+    this.custLedger = null;
+    this.showCustLedger = false;
+    this.custAddresses = [];
+    this.custContacts = [];
+    this.showAddrForm = false;
+    this.showContactForm = false;
+    this.api.getCustomerAddresses(c.id).subscribe(d => this.custAddresses = d);
+    this.api.getCustomerContacts(c.id).subscribe(d => this.custContacts = d);
+  }
+
+  openEditCust(c: Customer) {
+    this.editCust = c;
+    this.custForm = {
+      name: c.name, email: c.email ?? '', phone: c.phone ?? '', currency: c.currency,
+      paymentTermsDays: c.paymentTermsDays, creditLimit: c.creditLimit,
+      billingAddress: c.billingAddress ?? '', shippingAddress: c.shippingAddress ?? '',
+      website: c.website ?? '', notes: c.notes ?? ''
+    };
+    this.showCustForm = true;
+  }
+
+  saveCustomer() {
+    if (!this.custForm.name.trim()) return;
+    if (this.editCust) {
+      this.api.updateCustomer(this.editCust.id, this.custForm).subscribe(updated => {
+        this.customers = this.customers.map(c => c.id === updated.id ? updated : c);
+        if (this.selectedCust?.id === updated.id) this.selectedCust = updated;
+        this.showCustForm = false;
+        this.editCust = null;
+      });
+    } else {
+      this.api.createCustomer(this.custForm).subscribe(d => {
+        this.customers = [...this.customers, d];
+        this.showCustForm = false;
+        this.selectedCust = d;
+      });
+    }
+  }
+
+  loadCustLedger(id: string) {
+    if (this.custLedger?.customerId === id) { this.showCustLedger = !this.showCustLedger; return; }
+    this.api.getCustomerLedger(id).subscribe(d => {
+      this.custLedger = d;
+      this.showCustLedger = true;
+    });
+  }
+
+  toggleCustLedger() { this.showCustLedger = !this.showCustLedger; }
+
+  // ── Address CRUD ──────────────────────────────────────────────────────────
+  openAddressForm() {
+    this.editingAddrId = null;
+    this.addrForm = { label:'', addressType:'Billing', line1:'', line2:'', city:'', state:'', postalCode:'', country:'US' };
+    this.showAddrForm = true;
+  }
+
+  editAddress(a: any) {
+    this.editingAddrId = a.id;
+    this.addrForm = { label: a.label, addressType: a.addressType, line1: a.line1, line2: a.line2 ?? '',
+      city: a.city, state: a.state ?? '', postalCode: a.postalCode ?? '', country: a.country };
+    this.showAddrForm = true;
+  }
+
+  saveAddress() {
+    if (!this.selectedCust || !this.addrForm.label.trim() || !this.addrForm.line1.trim() || !this.addrForm.city.trim()) return;
+    const req = { ...this.addrForm };
+    if (this.editingAddrId) {
+      this.api.updateCustomerAddress(this.selectedCust.id, this.editingAddrId, req).subscribe(d => {
+        this.custAddresses = this.custAddresses.map(a => a.id === d.id ? d : a);
+        this.cancelAddressForm();
+      });
+    } else {
+      this.api.createCustomerAddress(this.selectedCust.id, req).subscribe(d => {
+        this.custAddresses = [...this.custAddresses, d];
+        this.cancelAddressForm();
+      });
+    }
+  }
+
+  cancelAddressForm() { this.showAddrForm = false; this.editingAddrId = null; }
+
+  deleteAddress(id: string) {
+    if (!this.selectedCust || !confirm('Delete this address?')) return;
+    this.api.deleteCustomerAddress(this.selectedCust.id, id).subscribe(() => {
+      this.custAddresses = this.custAddresses.filter(a => a.id !== id);
+    });
+  }
+
+  setPrimaryAddress(id: string) {
+    if (!this.selectedCust) return;
+    this.api.setPrimaryCustomerAddress(this.selectedCust.id, id).subscribe(() => {
+      this.custAddresses = this.custAddresses.map(a => ({ ...a, isPrimary: a.id === id }));
+    });
+  }
+
+  // ── Contact CRUD ──────────────────────────────────────────────────────────
+  openContactForm() {
+    this.editingContactId = null;
+    this.contactForm = { name:'', title:'', email:'', phone:'', mobile:'', notes:'' };
+    this.showContactForm = true;
+  }
+
+  editContact(c: any) {
+    this.editingContactId = c.id;
+    this.contactForm = { name: c.name, title: c.title ?? '', email: c.email ?? '',
+      phone: c.phone ?? '', mobile: c.mobile ?? '', notes: c.notes ?? '' };
+    this.showContactForm = true;
+  }
+
+  saveContact() {
+    if (!this.selectedCust || !this.contactForm.name.trim()) return;
+    const req = { ...this.contactForm };
+    if (this.editingContactId) {
+      this.api.updateCustomerContact(this.selectedCust.id, this.editingContactId, req).subscribe(d => {
+        this.custContacts = this.custContacts.map(c => c.id === d.id ? d : c);
+        this.cancelContactForm();
+      });
+    } else {
+      this.api.createCustomerContact(this.selectedCust.id, req).subscribe(d => {
+        this.custContacts = [...this.custContacts, d];
+        this.cancelContactForm();
+      });
+    }
+  }
+
+  cancelContactForm() { this.showContactForm = false; this.editingContactId = null; }
+
+  deleteContact(id: string) {
+    if (!this.selectedCust || !confirm('Delete this contact?')) return;
+    this.api.deleteCustomerContact(this.selectedCust.id, id).subscribe(() => {
+      this.custContacts = this.custContacts.filter(c => c.id !== id);
+    });
+  }
+
+  setPrimaryContact(id: string) {
+    if (!this.selectedCust) return;
+    this.api.setPrimaryCustomerContact(this.selectedCust.id, id).subscribe(() => {
+      this.custContacts = this.custContacts.map(c => ({ ...c, isPrimary: c.id === id }));
     });
   }
 
@@ -668,119 +1038,99 @@ export class AccountsReceivableComponent implements OnInit {
       next: (result) => {
         if (!result.isValid) {
           this.couponError = result.message || 'Invalid coupon.';
-          this.appliedCoupon = null;
           return;
         }
-        this.appliedCoupon = {
-          code,
-          promotionName: result.promotionName || '',
-          discountType: result.discountType || 'PercentageOff',
-          discountValue: result.discountValue
-        };
-        // Apply discount to all order lines
-        const discountPct = result.discountType === 'PercentageOff'
-          ? result.discountValue
-          : 0; // fixed/BuyXGetY shown on total but line-level pct stays 0
-        this.applyDiscountToLines(discountPct);
+        this.appliedCoupon = { code, promotionName: result.promotionName || '', discountType: result.discountType || '', discountValue: result.discountValue };
+        this.couponCodeInput = '';
+        this.couponError = '';
       },
-      error: () => { this.couponError = 'Could not validate coupon.'; }
-    });
-  }
-
-  private applyDiscountToLines(discountPct: number) {
-    if (!this.selectedOrder || discountPct <= 0) return;
-    this.api.applySalesOrderDiscount(this.selectedOrder.id, discountPct).subscribe({
-      next: (updated) => {
-        this.selectedOrder = updated;
-      },
-      error: (err) => {
-        this.couponError = err?.error?.error || 'Failed to apply discount to order lines.';
-      }
-    });
-  }
-
-  removeCoupon() {
-    this.appliedCoupon = null;
-    this.couponCodeInput = '';
-    this.couponError = '';
-    // Reload order to restore original prices
-    if (this.selectedOrder) this.selectOrder(this.selectedOrder.id);
-  }
-
-  removeSOLine(lineId: string) {
-    if (!this.selectedOrder) return;
-    this.api.removeSalesOrderLine(this.selectedOrder.id, lineId).subscribe(() => this.selectOrder(this.selectedOrder!.id));
-  }
-
-  soAction(action: string) {
-    if (!this.selectedOrder) return;
-    const id = this.selectedOrder.id;
-    const obs = action === 'confirm' ? this.api.confirmSalesOrder(id)
-      : action === 'picking' ? this.api.startPicking(id)
-      : this.api.cancelSalesOrder(id);
-    obs.subscribe(() => this.selectOrder(id));
-  }
-
-  soShip() {
-    if (!this.selectedOrder) return;
-    const shipDate = new Date().toISOString().split('T')[0];
-    this.api.shipSalesOrder(this.selectedOrder.id, { shipDate }).subscribe(() => this.selectOrder(this.selectedOrder!.id));
-  }
-
-  soGenerateInvoice() {
-    if (!this.selectedOrder) return;
-    this.api.generateARInvoice(this.selectedOrder.id).subscribe(() => {
-      this.selectOrder(this.selectedOrder!.id);
-      this.api.getARInvoices().subscribe(d => this.arInvoices = d);
-    });
-  }
-
-  resetExport(order: SalesOrder | null) {
-    if (!order) return;
-    if (!confirm(`Mark "${order.orderNumber}" for re-export? It will be included in the next export batch run.`)) return;
-    this.api.resetExport('SalesOrder', [order.id]).subscribe({
-      next: () => {
-        this.loadSalesOrders();
-        this.selectOrder(order.id);
-      },
-      error: err => alert('Failed to reset: ' + (err.error?.error ?? err.message))
-    });
-  }
-
-  issueInv(id: string) {
-    this.api.issueInvoice(id).subscribe(() => this.api.getARInvoices().subscribe(d => {
-      this.arInvoices = d;
-      this.selectedInv = d.find(i => i.id === id) || null;
-    }));
-  }
-
-  voidInv(id: string) {
-    this.api.voidARInvoice(id).subscribe(() => this.api.getARInvoices().subscribe(d => {
-      this.arInvoices = d;
-      this.selectedInv = d.find(i => i.id === id) || null;
-    }));
-  }
-
-  applyPayment(inv: ARInvoice) {
-    this.paymentTarget = inv;
-    this.paymentForm = { amount: inv.outstandingAmount, paymentDate: new Date().toISOString().split('T')[0], paymentMethod: 'BankTransfer', reference: '' };
-    this.showPaymentForm = true;
-  }
-
-  submitPayment() {
-    if (!this.paymentTarget) return;
-    const req = { customerId: this.paymentTarget.customerId, arInvoiceId: this.paymentTarget.id, ...this.paymentForm };
-    this.api.createARPayment(req).subscribe(() => {
-      this.showPaymentForm = false;
-      this.api.getARInvoices().subscribe(d => {
-        this.arInvoices = d;
-        this.selectedInv = d.find(i => i.id === this.paymentTarget!.id) || null;
-      });
-      this.loadAging();
+      error: () => { this.couponError = 'Failed to validate coupon.'; }
     });
   }
 
   loadAging() {
     this.api.getARAgingReport().subscribe(d => this.agingReport = d);
+  }
+
+  issueInv(id: string) {
+    this.api.issueInvoice(id).subscribe(() => {
+      this.api.getARInvoices().subscribe(d => {
+        this.arInvoices = d;
+        this.selectedInv = d.find(i => i.id === id) || null;
+      });
+    });
+  }
+
+  applyPayment(inv: any) {
+    this.paymentTarget = inv;
+    this.paymentForm = { amount: inv.outstandingAmount, paymentDate: new Date().toISOString().split('T')[0], paymentMethod: 'BankTransfer', reference: '' };
+    this.showPaymentForm = true;
+  }
+
+  voidInv(id: string) {
+    if (!confirm('Void this invoice?')) return;
+    this.api.voidARInvoice(id).subscribe(() => {
+      this.api.getARInvoices().subscribe(d => {
+        this.arInvoices = d;
+        this.selectedInv = d.find(i => i.id === id) || null;
+      });
+    });
+  }
+
+  submitPayment() {
+    if (!this.paymentTarget) return;
+    const req = {
+      arInvoiceId: this.paymentTarget.id,
+      customerId: this.paymentTarget.customerId,
+      amount: this.paymentForm.amount,
+      paymentDate: this.paymentForm.paymentDate,
+      paymentMethod: this.paymentForm.paymentMethod,
+      reference: this.paymentForm.reference
+    };
+    this.api.createARPayment(req).subscribe(() => {
+      this.showPaymentForm = false;
+      this.paymentTarget = null;
+      this.api.getARInvoices().subscribe(d => this.arInvoices = d);
+    });
+  }
+
+  soAction(action: 'confirm' | 'picking' | 'cancel') {
+    if (!this.selectedOrder) return;
+    const id = this.selectedOrder.id;
+    let obs$;
+    if (action === 'confirm') obs$ = this.api.confirmSalesOrder(id);
+    else if (action === 'picking') obs$ = this.api.startPicking(id);
+    else obs$ = this.api.cancelSalesOrder(id);
+    obs$.subscribe(() => this.api.getSalesOrder(id).subscribe(d => this.selectedOrder = d));
+  }
+
+  soShip() {
+    if (!this.selectedOrder) return;
+    const trackingNumber = prompt('Tracking number (optional):') || '';
+    this.api.shipSalesOrder(this.selectedOrder.id, { trackingNumber }).subscribe(() =>
+      this.api.getSalesOrder(this.selectedOrder!.id).subscribe(d => this.selectedOrder = d)
+    );
+  }
+
+  soGenerateInvoice() {
+    if (!this.selectedOrder) return;
+    this.api.generateARInvoice(this.selectedOrder.id).subscribe(() => {
+      this.api.getARInvoices().subscribe(d => this.arInvoices = d);
+    });
+  }
+
+  resetExport(order: any) {
+    this.api.resetExport('SalesOrder', [order.id]).subscribe(() =>
+      this.loadSalesOrders()
+    );
+  }
+
+  removeCoupon() {
+    this.appliedCoupon = null;
+  }
+
+  removeSOLine(lineId: string) {
+    if (!this.selectedOrder) return;
+    this.api.removeSalesOrderLine(this.selectedOrder.id, lineId).subscribe(() => this.api.getSalesOrder(this.selectedOrder!.id).subscribe(d => this.selectedOrder = d));
   }
 }

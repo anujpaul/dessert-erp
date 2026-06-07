@@ -62,5 +62,20 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./modules/trade-agreements/trade-agreements.component').then(m => m.TradeAgreementsComponent)
   },
+  {
+    path: 'inventory-management',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/inventory-management/inventory-management.component').then(m => m.InventoryManagementComponent)
+  },
+  {
+    path: 'approval-inbox',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/approval-inbox/approval-inbox.component').then(m => m.ApprovalInboxComponent)
+  },
+  {
+    path: 'expense-management',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/expense-management/expense-management.component').then(m => m.ExpenseManagementComponent)
+  },
   { path: '**', redirectTo: 'dashboard' }
 ];

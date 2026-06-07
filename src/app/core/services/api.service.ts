@@ -10,7 +10,8 @@ import {
   Vendor, PurchaseOrderSummary, PurchaseOrder, APInvoice, APAgingReport,
   RetailStore, POSTransactionSummary, POSTransaction, Promotion, Coupon,
   CouponValidationResult, RetailSummary,
-  Campaign, LoyaltyProgram, CustomerLoyaltyAccount
+  Campaign, LoyaltyProgram, CustomerLoyaltyAccount,
+  InventoryItem, InventorySummary, InventoryTransaction, LowStockItem, StockValuation
 } from '../models/erp.models';
 
 @Injectable({ providedIn: 'root' })
@@ -324,13 +325,13 @@ export class ApiService {
 
   // ── Data Management ──────────────────────────────────────────────────────
   exportData = (entityType: string, fileFormat: string) =>
-    this.http.get(`${this.base}/dm/export?entityType=${entityType}&fileFormat=${fileFormat}`,
-      { responseType: 'blob', observe: 'response' });
+    this.http.get<Blob>(`${this.base}/dm/export?entityType=${entityType}&fileFormat=${fileFormat}`,
+      { responseType: 'blob' as 'json', observe: 'response' });
 
 
   downloadTemplate = (entityType: string, fileFormat: string) =>
-    this.http.get(`${this.base}/dm/template?entityType=${entityType}&fileFormat=${fileFormat}`,
-      { responseType: 'blob', observe: 'response' });
+    this.http.get<Blob>(`${this.base}/dm/template?entityType=${entityType}&fileFormat=${fileFormat}`,
+      { responseType: 'blob' as 'json', observe: 'response' });
 
   importFile = (entityType: string, file: File) => {
     const fd = new FormData();
@@ -353,4 +354,190 @@ export class ApiService {
   applyPrepayment = (invoiceId: string, prepaymentInvoiceId: string) =>
     this.http.post<any>(`${this.base}/ap/invoices/${invoiceId}/apply-prepayment/${prepaymentInvoiceId}`, {});
 
+  // ── Customer / Vendor profile methods ────────────────────────────────────
+  updateCustomer = (id: string, r: any) => this.http.put<Customer>(`${this.base}/ar/customers/${id}`, r);
+  getCustomerLedger = (id: string) => this.http.get<any>(`${this.base}/ar/customers/${id}/ledger`);
+  getVendorLedger = (id: string) => this.http.get<any>(`${this.base}/ap/vendors/${id}/ledger`);
+
+  // ── Inventory Management ──────────────────────────────────────────────────
+  getInventorySummary = () =>
+    this.http.get<any>(`${this.base}/inventory/summary`);
+
+  getInventoryItems = (search?: string, filter?: string) => {
+    let params = new HttpParams();
+    if (search) params = params.set('search', search);
+    if (filter) params = params.set('filter', filter);
+    return this.http.get<any[]>(`${this.base}/inventory/items`, { params });
+  };
+
+  getInventoryItem = (id: string) =>
+    this.http.get<any>(`${this.base}/inventory/items/${id}`);
+
+  adjustStock = (id: string, req: any) =>
+    this.http.post<any>(`${this.base}/inventory/items/${id}/adjust`, req);
+
+  setOnHand = (id: string, req: any) =>
+    this.http.post<any>(`${this.base}/inventory/items/${id}/set-on-hand`, req);
+
+  updateInventoryThresholds = (id: string, req: any) =>
+    this.http.put<any>(`${this.base}/inventory/items/${id}/thresholds`, req);
+
+  getInventoryTransactions = (variantId: string, take = 100) =>
+    this.http.get<any[]>(`${this.base}/inventory/items/${variantId}/transactions?take=${take}`);
+
+  getRecentInventoryTransactions = (take = 50) =>
+    this.http.get<any[]>(`${this.base}/inventory/transactions/recent?take=${take}`);
+
+  getLowStockItems = () =>
+    this.http.get<any[]>(`${this.base}/inventory/low-stock`);
+
+  getStockValuation = () =>
+    this.http.get<any[]>(`${this.base}/inventory/valuation`);
+
+  // ── Customer Addresses ────────────────────────────────────────────────────
+  getCustomerAddresses = (customerId: string) =>
+    this.http.get<any[]>(`${this.base}/ar/customers/${customerId}/addresses`);
+  createCustomerAddress = (customerId: string, req: any) =>
+    this.http.post<any>(`${this.base}/ar/customers/${customerId}/addresses`, req);
+  updateCustomerAddress = (customerId: string, addressId: string, req: any) =>
+    this.http.put<any>(`${this.base}/ar/customers/${customerId}/addresses/${addressId}`, req);
+  deleteCustomerAddress = (customerId: string, addressId: string) =>
+    this.http.delete<void>(`${this.base}/ar/customers/${customerId}/addresses/${addressId}`);
+  setPrimaryCustomerAddress = (customerId: string, addressId: string) =>
+    this.http.post<void>(`${this.base}/ar/customers/${customerId}/addresses/${addressId}/set-primary`, {});
+
+  // ── Customer Contacts ─────────────────────────────────────────────────────
+  getCustomerContacts = (customerId: string) =>
+    this.http.get<any[]>(`${this.base}/ar/customers/${customerId}/contacts`);
+  createCustomerContact = (customerId: string, req: any) =>
+    this.http.post<any>(`${this.base}/ar/customers/${customerId}/contacts`, req);
+  updateCustomerContact = (customerId: string, contactId: string, req: any) =>
+    this.http.put<any>(`${this.base}/ar/customers/${customerId}/contacts/${contactId}`, req);
+  deleteCustomerContact = (customerId: string, contactId: string) =>
+    this.http.delete<void>(`${this.base}/ar/customers/${customerId}/contacts/${contactId}`);
+  setPrimaryCustomerContact = (customerId: string, contactId: string) =>
+    this.http.post<void>(`${this.base}/ar/customers/${customerId}/contacts/${contactId}/set-primary`, {});
+
+  // ── Vendor Addresses ──────────────────────────────────────────────────────
+  getVendorAddresses = (vendorId: string) =>
+    this.http.get<any[]>(`${this.base}/ap/vendors/${vendorId}/addresses`);
+  createVendorAddress = (vendorId: string, req: any) =>
+    this.http.post<any>(`${this.base}/ap/vendors/${vendorId}/addresses`, req);
+  updateVendorAddress = (vendorId: string, addressId: string, req: any) =>
+    this.http.put<any>(`${this.base}/ap/vendors/${vendorId}/addresses/${addressId}`, req);
+  deleteVendorAddress = (vendorId: string, addressId: string) =>
+    this.http.delete<void>(`${this.base}/ap/vendors/${vendorId}/addresses/${addressId}`);
+  setPrimaryVendorAddress = (vendorId: string, addressId: string) =>
+    this.http.post<void>(`${this.base}/ap/vendors/${vendorId}/addresses/${addressId}/set-primary`, {});
+
+  // ── Vendor Contacts ───────────────────────────────────────────────────────
+  getVendorContacts = (vendorId: string) =>
+    this.http.get<any[]>(`${this.base}/ap/vendors/${vendorId}/contacts`);
+  createVendorContact = (vendorId: string, req: any) =>
+    this.http.post<any>(`${this.base}/ap/vendors/${vendorId}/contacts`, req);
+  updateVendorContact = (vendorId: string, contactId: string, req: any) =>
+    this.http.put<any>(`${this.base}/ap/vendors/${vendorId}/contacts/${contactId}`, req);
+  deleteVendorContact = (vendorId: string, contactId: string) =>
+    this.http.delete<void>(`${this.base}/ap/vendors/${vendorId}/contacts/${contactId}`);
+  setPrimaryVendorContact = (vendorId: string, contactId: string) =>
+    this.http.post<void>(`${this.base}/ap/vendors/${vendorId}/contacts/${contactId}/set-primary`, {});
+
+  // ── Workflow Engine ───────────────────────────────────────────────────────
+  getWorkflowTemplates = () =>
+    this.http.get<any[]>(`${this.base}/workflow/templates`);
+
+  getWorkflowTemplate = (id: string) =>
+    this.http.get<any>(`${this.base}/workflow/templates/${id}`);
+
+  createWorkflowTemplate = (req: any) =>
+    this.http.post<any>(`${this.base}/workflow/templates`, req);
+
+  updateWorkflowTemplate = (id: string, req: any) =>
+    this.http.put<any>(`${this.base}/workflow/templates/${id}`, req);
+
+  deleteWorkflowTemplate = (id: string) =>
+    this.http.delete<void>(`${this.base}/workflow/templates/${id}`);
+
+  getPendingApprovals = (role?: string) => {
+    let params = new HttpParams();
+    if (role) params = params.set('role', role);
+    return this.http.get<any[]>(`${this.base}/workflow/pending`, { params });
+  };
+
+  getWorkflowInstances = (status?: string, docType?: string) => {
+    let params = new HttpParams();
+    if (status) params = params.set('status', status);
+    if (docType) params = params.set('docType', docType);
+    return this.http.get<any[]>(`${this.base}/workflow/instances`, { params });
+  };
+
+  getWorkflowInstance = (id: string) =>
+    this.http.get<any>(`${this.base}/workflow/instances/${id}`);
+
+  getWorkflowInstanceForDocument = (docType: string, documentId: string) =>
+    this.http.get<any>(`${this.base}/workflow/instances/for-document/${docType}/${documentId}`);
+
+  submitForApproval = (req: any) =>
+    this.http.post<any>(`${this.base}/workflow/submit`, req);
+
+  approveWorkflowStep = (instanceId: string, stepId: string, req: any) =>
+    this.http.post<any>(`${this.base}/workflow/instances/${instanceId}/steps/${stepId}/approve`, req);
+
+  rejectWorkflowStep = (instanceId: string, stepId: string, req: any) =>
+    this.http.post<any>(`${this.base}/workflow/instances/${instanceId}/steps/${stepId}/reject`, req);
+
+  recallWorkflow = (instanceId: string) =>
+    this.http.post<any>(`${this.base}/workflow/instances/${instanceId}/recall`, {});
+
+  // ── Expense Management ────────────────────────────────────────────────────
+  getExpenseCategories = () =>
+    this.http.get<any[]>(`${this.base}/expenses/categories`);
+
+  createExpenseCategory = (req: any) =>
+    this.http.post<any>(`${this.base}/expenses/categories`, req);
+
+  updateExpenseCategory = (id: string, req: any) =>
+    this.http.put<any>(`${this.base}/expenses/categories/${id}`, req);
+
+  deleteExpenseCategory = (id: string) =>
+    this.http.delete<void>(`${this.base}/expenses/categories/${id}`);
+
+  getExpenseReports = (status?: string) => {
+    let params = new HttpParams();
+    if (status) params = params.set('status', status);
+    return this.http.get<any[]>(`${this.base}/expenses/reports`, { params });
+  };
+
+  getExpenseReport = (id: string) =>
+    this.http.get<any>(`${this.base}/expenses/reports/${id}`);
+
+  createExpenseReport = (req: any) =>
+    this.http.post<any>(`${this.base}/expenses/reports`, req);
+
+  updateExpenseReport = (id: string, req: any) =>
+    this.http.put<any>(`${this.base}/expenses/reports/${id}`, req);
+
+  deleteExpenseReport = (id: string) =>
+    this.http.delete<void>(`${this.base}/expenses/reports/${id}`);
+
+  addExpenseLine = (reportId: string, req: any) =>
+    this.http.post<any>(`${this.base}/expenses/reports/${reportId}/lines`, req);
+
+  updateExpenseLine = (reportId: string, lineId: string, req: any) =>
+    this.http.put<any>(`${this.base}/expenses/reports/${reportId}/lines/${lineId}`, req);
+
+  deleteExpenseLine = (reportId: string, lineId: string) =>
+    this.http.delete<any>(`${this.base}/expenses/reports/${reportId}/lines/${lineId}`);
+
+  submitExpenseReport = (id: string, submittedBy: string) =>
+    this.http.post<any>(`${this.base}/expenses/reports/${id}/submit`, { submittedBy });
+
+  approveExpenseReport = (id: string, req: { approvedBy: string; comments?: string }) =>
+    this.http.post<any>(`${this.base}/expenses/reports/${id}/approve`, req);
+
+  rejectExpenseReport = (id: string, req: { rejectedBy: string; reason: string }) =>
+    this.http.post<any>(`${this.base}/expenses/reports/${id}/reject`, req);
+
+  markExpensePaid = (id: string, req: { amount: number }) =>
+    this.http.post<any>(`${this.base}/expenses/reports/${id}/mark-paid`, req);
 }
