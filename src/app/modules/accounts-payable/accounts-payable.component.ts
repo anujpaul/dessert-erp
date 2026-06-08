@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
 import { Vendor, VendorAddress, VendorContact, VendorLedger, PurchaseOrderSummary, PurchaseOrder, Receipt, APInvoice, APAgingReport, VariantLookup, ThreeWayMatchResult } from '../../core/models/erp.models';
 
-type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
+type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' | 'proposals' | 'creditnotes';
 
 @Component({
   selector: 'app-accounts-payable',
@@ -637,6 +637,247 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging';
     </div>
   </div>
 
+  <!-- ── PURCHASE REQUISITIONS ── -->
+  <div *ngIf="activeTab === 'requisitions'" class="tab-content">
+    <div class="toolbar">
+      <select [(ngModel)]="prStatusFilter" class="filter-select" (ngModelChange)="loadRequisitions()">
+        <option value="">All Statuses</option>
+        <option *ngFor="let s of prStatuses" [value]="s">{{ s }}</option>
+      </select>
+      <button class="btn-primary" (click)="showCreatePR = true">+ New Requisition</button>
+    </div>
+
+    <!-- Create PR Form -->
+    <div *ngIf="showCreatePR" class="form-card">
+      <div class="form-title">New Purchase Requisition</div>
+      <div class="form-grid">
+        <div class="form-field"><label>Requested By</label><input [(ngModel)]="prForm.requestedBy" /></div>
+        <div class="form-field"><label>Department</label><input [(ngModel)]="prForm.departmentCode" /></div>
+        <div class="form-field"><label>Cost Center</label><input [(ngModel)]="prForm.costCenterCode" /></div>
+        <div class="form-field"><label>Needed By Date</label><input type="date" [(ngModel)]="prForm.neededByDate" /></div>
+        <div class="form-field"><label>Notes</label><input [(ngModel)]="prForm.notes" /></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" (click)="createPR()">Create</button>
+        <button class="btn-ghost" (click)="showCreatePR = false">Cancel</button>
+      </div>
+    </div>
+
+    <!-- PR Detail Panel -->
+    <div *ngIf="selectedPR" class="form-card">
+      <div class="detail-header">
+        <div>
+          <div class="detail-title">{{ selectedPR.requisitionNumber }}</div>
+          <span class="badge" [ngClass]="prBadgeClass(selectedPR.status)">{{ selectedPR.status }}</span>
+        </div>
+        <button class="btn-ghost-sm" (click)="selectedPR = null">✕ Close</button>
+      </div>
+      <div class="info-grid">
+        <div class="info-item"><span class="info-label">Requested By</span>{{ selectedPR.requestedBy }}</div>
+        <div class="info-item"><span class="info-label">Department</span>{{ selectedPR.departmentCode || '—' }}</div>
+        <div class="info-item"><span class="info-label">Cost Center</span>{{ selectedPR.costCenterCode || '—' }}</div>
+        <div class="info-item"><span class="info-label">Needed By</span>{{ selectedPR.neededByDate | date:'mediumDate' }}</div>
+        <div class="info-item"><span class="info-label">Total Est. Cost</span>{{ selectedPR.totalEstimatedCost | currency }}</div>
+      </div>
+      <!-- Add PR Line -->
+      <div *ngIf="selectedPR.status === 'Draft'" class="inline-form">
+        <div class="form-grid">
+          <div class="form-field"><label>Description</label><input [(ngModel)]="prLineForm.description" /></div>
+          <div class="form-field"><label>Qty</label><input type="number" [(ngModel)]="prLineForm.quantity" /></div>
+          <div class="form-field"><label>UOM</label><input [(ngModel)]="prLineForm.unitOfMeasure" /></div>
+          <div class="form-field"><label>Est. Unit Cost</label><input type="number" [(ngModel)]="prLineForm.estimatedUnitCost" /></div>
+          <div class="form-field"><label>GL Account</label><input [(ngModel)]="prLineForm.glAccountCode" /></div>
+        </div>
+        <button class="btn-primary-sm" (click)="addPRLine()">+ Add Line</button>
+      </div>
+      <table *ngIf="selectedPR.lines?.length" class="data-table mt">
+        <thead><tr><th>#</th><th>Description</th><th class="num">Qty</th><th>UOM</th><th class="num">Est. Unit Cost</th><th class="num">Est. Total</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let l of selectedPR.lines">
+            <td>{{ l.lineNumber }}</td>
+            <td>{{ l.description }}</td>
+            <td class="num">{{ l.quantity }}</td>
+            <td>{{ l.unitOfMeasure }}</td>
+            <td class="num">{{ l.estimatedUnitCost | currency }}</td>
+            <td class="num">{{ l.estimatedTotalCost | currency }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="action-row mt">
+        <button *ngIf="selectedPR.status === 'Draft'" class="btn-primary-sm" (click)="submitPR(selectedPR.id)">Submit for Approval</button>
+        <button *ngIf="selectedPR.status === 'Submitted'" class="btn-primary-sm" (click)="approvePR(selectedPR.id)">Approve</button>
+        <button *ngIf="selectedPR.status === 'Submitted'" class="btn-danger-sm" (click)="rejectPR(selectedPR.id)">Reject</button>
+        <button *ngIf="selectedPR.status === 'Approved'" class="btn-primary-sm" (click)="convertPRtoPO(selectedPR.id)">Convert to PO</button>
+        <button *ngIf="['Draft','Submitted'].includes(selectedPR.status)" class="btn-ghost-sm" (click)="cancelPR(selectedPR.id)">Cancel</button>
+      </div>
+    </div>
+
+    <!-- PR List -->
+    <table class="data-table mt">
+      <thead><tr>
+        <th>Number</th><th>Requested By</th><th>Department</th><th>Needed By</th>
+        <th class="num">Est. Cost</th><th>Status</th><th>Lines</th>
+      </tr></thead>
+      <tbody>
+        <tr *ngFor="let r of requisitions" style="cursor:pointer" (click)="selectPR(r.id)">
+          <td><strong>{{ r.requisitionNumber }}</strong></td>
+          <td>{{ r.requestedBy }}</td>
+          <td>{{ r.departmentCode || '—' }}</td>
+          <td>{{ r.neededByDate | date:'mediumDate' }}</td>
+          <td class="num">{{ r.totalEstimatedCost | currency }}</td>
+          <td><span class="badge" [ngClass]="prBadgeClass(r.status)">{{ r.status }}</span></td>
+          <td>{{ r.lineCount }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div *ngIf="!requisitions.length" class="empty mt">No purchase requisitions found.</div>
+  </div>
+
+  <!-- ── PAYMENT PROPOSALS ── -->
+  <div *ngIf="activeTab === 'proposals'" class="tab-content">
+    <div class="toolbar">
+      <button class="btn-primary" (click)="openCreateProposal()">+ New Payment Proposal</button>
+      <button class="btn-ghost" (click)="loadProposals()">↺ Refresh</button>
+    </div>
+
+    <!-- Create Proposal Form -->
+    <div *ngIf="showCreateProposal" class="form-card">
+      <div class="form-title">New Payment Proposal</div>
+      <div class="form-grid">
+        <div class="form-field"><label>Proposal Date</label><input type="date" [(ngModel)]="proposalForm.proposalDate" /></div>
+        <div class="form-field"><label>Payment Date</label><input type="date" [(ngModel)]="proposalForm.paymentDate" /></div>
+        <div class="form-field"><label>Payment Method</label>
+          <select [(ngModel)]="proposalForm.paymentMethod">
+            <option>BankTransfer</option><option>Check</option><option>ACH</option><option>Wire</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Bank Account</label><input [(ngModel)]="proposalForm.bankAccount" /></div>
+        <div class="form-field"><label>Notes</label><input [(ngModel)]="proposalForm.notes" /></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" (click)="createProposal()">Create</button>
+        <button class="btn-ghost" (click)="showCreateProposal = false">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Proposal Detail -->
+    <div *ngIf="selectedProposal" class="form-card">
+      <div class="detail-header">
+        <div>
+          <div class="detail-title">{{ selectedProposal.proposalNumber }}</div>
+          <span class="badge" [ngClass]="proposalBadgeClass(selectedProposal.status)">{{ selectedProposal.status }}</span>
+        </div>
+        <button class="btn-ghost-sm" (click)="selectedProposal = null">✕ Close</button>
+      </div>
+      <div class="info-grid">
+        <div class="info-item"><span class="info-label">Proposal Date</span>{{ selectedProposal.proposalDate | date:'mediumDate' }}</div>
+        <div class="info-item"><span class="info-label">Payment Date</span>{{ selectedProposal.paymentDate | date:'mediumDate' }}</div>
+        <div class="info-item"><span class="info-label">Method</span>{{ selectedProposal.paymentMethod }}</div>
+        <div class="info-item"><span class="info-label">Total</span>{{ selectedProposal.totalAmount | currency }}</div>
+        <div class="info-item" *ngIf="selectedProposal.processedBy"><span class="info-label">Processed By</span>{{ selectedProposal.processedBy }}</div>
+      </div>
+      <!-- Add invoice line -->
+      <div *ngIf="selectedProposal.status === 'Draft'" class="inline-form">
+        <div class="form-grid">
+          <div class="form-field"><label>Invoice ID</label><input [(ngModel)]="addInvoiceId" placeholder="Paste AP Invoice GUID" /></div>
+        </div>
+        <button class="btn-primary-sm" (click)="addProposalLine()">+ Add Invoice</button>
+      </div>
+      <table *ngIf="selectedProposal.lines?.length" class="data-table mt">
+        <thead><tr><th>Invoice</th><th>Vendor</th><th>Due Date</th><th class="num">Amount</th><th>Payment</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let l of selectedProposal.lines">
+            <td>{{ l.invoiceNumber }}</td>
+            <td>{{ l.vendorName }}</td>
+            <td>{{ l.invoiceDueDate | date:'mediumDate' }}</td>
+            <td class="num">{{ l.proposedAmount | currency }}</td>
+            <td><span *ngIf="l.apPaymentId" class="badge badge-ok">Paid</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="action-row mt">
+        <button *ngIf="selectedProposal.status === 'Draft'" class="btn-primary-sm" (click)="approveProposal(selectedProposal.id)">Approve</button>
+        <button *ngIf="selectedProposal.status === 'Approved'" class="btn-primary-sm" (click)="processProposal(selectedProposal.id)">Process Payment Run</button>
+        <button *ngIf="['Draft','Approved'].includes(selectedProposal.status)" class="btn-danger-sm" (click)="cancelProposal(selectedProposal.id)">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Proposals List -->
+    <table class="data-table mt">
+      <thead><tr>
+        <th>Number</th><th>Proposal Date</th><th>Payment Date</th><th>Method</th>
+        <th class="num">Total</th><th>Lines</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        <tr *ngFor="let p of paymentProposals" style="cursor:pointer" (click)="selectProposal(p.id)">
+          <td><strong>{{ p.proposalNumber }}</strong></td>
+          <td>{{ p.proposalDate | date:'mediumDate' }}</td>
+          <td>{{ p.paymentDate | date:'mediumDate' }}</td>
+          <td>{{ p.paymentMethod }}</td>
+          <td class="num">{{ p.totalAmount | currency }}</td>
+          <td>{{ p.lineCount }}</td>
+          <td><span class="badge" [ngClass]="proposalBadgeClass(p.status)">{{ p.status }}</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div *ngIf="!paymentProposals.length" class="empty mt">No payment proposals found.</div>
+  </div>
+
+  <!-- ── CREDIT NOTES ── -->
+  <div *ngIf="activeTab === 'creditnotes'" class="tab-content">
+    <div class="toolbar">
+      <button class="btn-primary" (click)="openCreateCreditNote()">+ New Credit Note</button>
+      <button class="btn-ghost" (click)="loadCreditNotes()">↺ Refresh</button>
+    </div>
+
+    <!-- Create CN Form -->
+    <div *ngIf="showCreateCN" class="form-card">
+      <div class="form-title">New Vendor Credit Note</div>
+      <div class="form-grid">
+        <div class="form-field"><label>Vendor ID</label><input [(ngModel)]="cnForm.vendorId" placeholder="Vendor GUID" /></div>
+        <div class="form-field"><label>Credit Date</label><input type="date" [(ngModel)]="cnForm.creditDate" /></div>
+        <div class="form-field"><label>Description</label><input [(ngModel)]="cnForm.description" /></div>
+        <div class="form-field"><label>Sub Total</label><input type="number" [(ngModel)]="cnForm.subTotal" /></div>
+        <div class="form-field"><label>Tax Amount</label><input type="number" [(ngModel)]="cnForm.taxAmount" /></div>
+        <div class="form-field"><label>Reason</label>
+          <select [(ngModel)]="cnForm.reason">
+            <option>Return</option><option>PriceCorrection</option><option>Dispute</option><option>Overpayment</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Vendor CN Ref</label><input [(ngModel)]="cnForm.vendorCNRef" /></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" (click)="createCreditNote()">Create</button>
+        <button class="btn-ghost" (click)="showCreateCN = false">Cancel</button>
+      </div>
+    </div>
+
+    <!-- CN List -->
+    <table class="data-table mt">
+      <thead><tr>
+        <th>Number</th><th>Vendor</th><th>Date</th><th>Reason</th>
+        <th class="num">Total</th><th class="num">Available</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody>
+        <tr *ngFor="let c of creditNotes">
+          <td><strong>{{ c.creditNoteNumber }}</strong></td>
+          <td>{{ c.vendorName }}</td>
+          <td>{{ c.creditDate | date:'mediumDate' }}</td>
+          <td>{{ c.reason }}</td>
+          <td class="num">{{ c.totalAmount | currency }}</td>
+          <td class="num" [class.ok]="c.availableCredit > 0">{{ c.availableCredit | currency }}</td>
+          <td><span class="badge" [ngClass]="cnBadgeClass(c.status)">{{ c.status }}</span></td>
+          <td>
+            <button *ngIf="c.status === 'Draft'" class="btn-xs" (click)="postCreditNote(c.id)">Post</button>
+            <button *ngIf="c.status === 'Posted'" class="btn-xs" (click)="promptApplyCN(c)">Apply</button>
+            <button *ngIf="['Draft','Posted'].includes(c.status)" class="btn-xs btn-red" (click)="voidCreditNote(c.id)">Void</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div *ngIf="!creditNotes.length" class="empty mt">No credit notes found.</div>
+  </div>
+
   <!-- ── AGING ── -->
   <div *ngIf="activeTab === 'aging'" class="tab-content">
     <div class="toolbar"><button class="btn-primary" (click)="loadAPAging()">Refresh</button></div>
@@ -835,6 +1076,9 @@ export class AccountsPayableComponent implements OnInit {
     { id: 'vendors' as Tab, label: 'Vendors', icon: '🏭' },
     { id: 'purchaseorders' as Tab, label: 'Purchase Orders', icon: '📦' },
     { id: 'invoices' as Tab, label: 'AP Invoices', icon: '📄' },
+    { id: 'requisitions' as Tab, label: 'Requisitions', icon: '📝' },
+    { id: 'proposals' as Tab, label: 'Payment Proposals', icon: '💳' },
+    { id: 'creditnotes' as Tab, label: 'Credit Notes', icon: '📋' },
     { id: 'aging' as Tab, label: 'Aging Report', icon: '📅' },
   ];
 
@@ -903,6 +1147,27 @@ export class AccountsPayableComponent implements OnInit {
   applyPrepayTarget: APInvoice | null = null;
   availablePrepayments: APInvoice[] = [];
 
+  // ── Purchase Requisitions state ───────────────────────────────────────────
+  prStatuses = ['Draft','Submitted','Approved','Rejected','Converted','Cancelled'];
+  prStatusFilter = '';
+  requisitions: any[] = [];
+  selectedPR: any = null;
+  showCreatePR = false;
+  prForm = { requestedBy: '', departmentCode: '', costCenterCode: '', neededByDate: '', notes: '' };
+  prLineForm = { description: '', quantity: 1, unitOfMeasure: 'EA', estimatedUnitCost: 0, glAccountCode: '' };
+
+  // ── Payment Proposals state ───────────────────────────────────────────────
+  paymentProposals: any[] = [];
+  selectedProposal: any = null;
+  showCreateProposal = false;
+  addInvoiceId = '';
+  proposalForm = { proposalDate: '', paymentDate: '', paymentMethod: 'BankTransfer', bankAccount: '', notes: '' };
+
+  // ── Credit Notes state ────────────────────────────────────────────────────
+  creditNotes: any[] = [];
+  showCreateCN = false;
+  cnForm = { vendorId: '', creditDate: '', description: '', subTotal: 0, taxAmount: 0, reason: 'Other', vendorCNRef: '' };
+
   apAgingReport: APAgingReport[] = [];
   get apAgingTotals() {
     return {
@@ -933,7 +1198,12 @@ export class AccountsPayableComponent implements OnInit {
     this.loadAPAging();
   }
 
-  setTab(t: Tab) { this.activeTab = t; }
+  setTab(t: Tab) {
+    this.activeTab = t;
+    if (t === 'requisitions' && !this.requisitions.length) this.loadRequisitions();
+    if (t === 'proposals' && !this.paymentProposals.length) this.loadProposals();
+    if (t === 'creditnotes' && !this.creditNotes.length) this.loadCreditNotes();
+  }
 
   // ── Vendors ──────────────────────────────────────────────────────────────────
 
@@ -1096,7 +1366,7 @@ export class AccountsPayableComponent implements OnInit {
         this.vendors = this.vendors.filter(x => x.id !== v.id);
         if (this.selectedVend?.id === v.id) this.selectedVend = null;
       },
-      error: err => alert('Cannot delete: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Cannot delete: ' + (err.error?.error ?? err.message))
     });
   }
 
@@ -1180,7 +1450,7 @@ export class AccountsPayableComponent implements OnInit {
         this.receiveQtys = d.lines.map(() => 0);
         this.clearLineForm();
       },
-      error: err => alert('Error: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Error: ' + (err.error?.error ?? err.message))
     });
   }
 
@@ -1227,7 +1497,7 @@ export class AccountsPayableComponent implements OnInit {
         this.selectPO(this.selectedPO!.id);
         this.loadPOs();
       },
-      error: err => alert('Error: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Error: ' + (err.error?.error ?? err.message))
     });
   }
 
@@ -1235,7 +1505,7 @@ export class AccountsPayableComponent implements OnInit {
     if (!this.selectedPO || !confirm('Cancel this purchase order?')) return;
     this.api.cancelPurchaseOrder(this.selectedPO.id).subscribe({
       next: () => { this.selectPO(this.selectedPO!.id); this.loadPOs(); },
-      error: err => alert('Cannot cancel: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Cannot cancel: ' + (err.error?.error ?? err.message))
     });
   }
 
@@ -1243,7 +1513,7 @@ export class AccountsPayableComponent implements OnInit {
     if (!this.selectedPO || !confirm('Close this PO? No further receipts or invoices will be possible.')) return;
     this.api.closePurchaseOrder(this.selectedPO.id).subscribe({
       next: () => { this.selectPO(this.selectedPO!.id); this.loadPOs(); },
-      error: err => alert('Cannot close: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Cannot close: ' + (err.error?.error ?? err.message))
     });
   }
 
@@ -1257,7 +1527,7 @@ export class AccountsPayableComponent implements OnInit {
         this.loadPOs();
         this.api.getAPInvoices().subscribe(d => this.apInvoices = d);
       },
-      error: err => alert('Invoice failed: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Invoice failed: ' + (err.error?.error ?? err.message))
     });
   }
 
@@ -1270,7 +1540,7 @@ export class AccountsPayableComponent implements OnInit {
         this.showCreateAPInv = false;
         this.apInvForm = { vendorId:'', vendorInvoiceRef:'', invoiceDate:'', dueDate:'', subTotal: 0, taxAmount: 0, description:'' };
       },
-      error: err => alert('Failed: ' + (err.error?.message || err.message))
+      error: (err: any) => alert('Failed: ' + (err.error?.message || err.message))
     });
   }
 
@@ -1337,7 +1607,7 @@ export class AccountsPayableComponent implements OnInit {
         this.showPrepayForm = false;
         this.api.getAPInvoices().subscribe(d => this.apInvoices = d);
       },
-      error: err => alert('Error: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Error: ' + (err.error?.error ?? err.message))
     });
   }
 
@@ -1353,7 +1623,7 @@ export class AccountsPayableComponent implements OnInit {
         this.apInvoices = d;
         this.selectedAPInv = d.find(i => i.id === invoiceId) ?? null;
       }),
-      error: err => alert('Match failed: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Match failed: ' + (err.error?.error ?? err.message))
     });
   }
 
@@ -1374,7 +1644,7 @@ export class AccountsPayableComponent implements OnInit {
           this.selectedAPInv = d.find(i => i.id === id) ?? null;
         });
       },
-      error: err => alert('Bypass failed: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Bypass failed: ' + (err.error?.error ?? err.message))
     });
   }
 
@@ -1402,8 +1672,199 @@ export class AccountsPayableComponent implements OnInit {
           this.selectedAPInv = d.find(i => i.id === id) ?? null;
         });
       },
-      error: err => alert('Apply prepayment failed: ' + (err.error?.error ?? err.message))
+      error: (err: any) => alert('Apply prepayment failed: ' + (err.error?.error ?? err.message))
     });
+  }
+
+  // ── Purchase Requisitions ─────────────────────────────────────────────────
+
+  loadRequisitions() {
+    this.api.getRequisitions(this.prStatusFilter || undefined).subscribe(d => this.requisitions = d);
+  }
+
+  selectPR(id: string) {
+    this.api.getRequisition(id).subscribe(d => this.selectedPR = d);
+  }
+
+  createPR() {
+    const today = new Date().toISOString().split('T')[0];
+    const req = { ...this.prForm, neededByDate: this.prForm.neededByDate || today };
+    this.api.createRequisition(req).subscribe({
+      next: pr => { this.showCreatePR = false; this.selectedPR = pr; this.loadRequisitions(); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  addPRLine() {
+    if (!this.selectedPR) return;
+    this.api.addPRLine(this.selectedPR.id, this.prLineForm).subscribe({
+      next: pr => { this.selectedPR = pr; this.prLineForm = { description: '', quantity: 1, unitOfMeasure: 'EA', estimatedUnitCost: 0, glAccountCode: '' }; },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  submitPR(id: string) {
+    this.api.submitRequisition(id).subscribe({
+      next: pr => { this.selectedPR = pr; this.loadRequisitions(); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  approvePR(id: string) {
+    const approvedBy = prompt('Approver name:') || 'manager';
+    this.api.approveRequisition(id, approvedBy).subscribe({
+      next: pr => { this.selectedPR = pr; this.loadRequisitions(); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  rejectPR(id: string) {
+    const reason = prompt('Rejection reason:');
+    if (!reason) return;
+    this.api.rejectRequisition(id, reason).subscribe({
+      next: pr => { this.selectedPR = pr; this.loadRequisitions(); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  convertPRtoPO(id: string) {
+    const vendorId = prompt('Enter Vendor ID (GUID) for the PO:');
+    if (!vendorId) return;
+    const today = new Date().toISOString().split('T')[0];
+    const req = { vendorId, orderDate: today };
+    this.api.convertRequisitionToPO(id, req).subscribe({
+      next: () => { this.loadRequisitions(); this.loadPOs(); alert('Purchase Order created from requisition!'); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  cancelPR(id: string) {
+    this.api.cancelRequisition(id).subscribe({
+      next: () => { this.selectedPR = null; this.loadRequisitions(); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  prBadgeClass(status: string) {
+    const m: Record<string, string> = {
+      Draft: 'badge-po-draft', Submitted: 'badge-po-sent', Approved: 'badge-po-fullyreceived',
+      Rejected: 'badge-po-cancelled', Converted: 'badge-inv-fullyinvoiced', Cancelled: 'badge-po-closed'
+    };
+    return m[status] ?? 'badge-po-draft';
+  }
+
+  // ── Payment Proposals ─────────────────────────────────────────────────────
+
+  loadProposals() {
+    this.api.getPaymentProposals().subscribe(d => this.paymentProposals = d);
+  }
+
+  selectProposal(id: string) {
+    this.api.getPaymentProposal(id).subscribe(d => this.selectedProposal = d);
+  }
+
+  openCreateProposal() {
+    const today = new Date().toISOString().split('T')[0];
+    this.proposalForm = { proposalDate: today, paymentDate: today, paymentMethod: 'BankTransfer', bankAccount: '', notes: '' };
+    this.showCreateProposal = true;
+  }
+
+  createProposal() {
+    this.api.createPaymentProposal(this.proposalForm).subscribe({
+      next: p => { this.showCreateProposal = false; this.selectedProposal = p; this.loadProposals(); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  addProposalLine() {
+    if (!this.selectedProposal || !this.addInvoiceId.trim()) return;
+    this.api.addProposalLine(this.selectedProposal.id, this.addInvoiceId.trim()).subscribe({
+      next: (p: any) => { this.selectedProposal = p; this.addInvoiceId = ''; },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  approveProposal(id: string) {
+    this.api.approvePaymentProposal(id).subscribe({
+      next: (p: any) => { this.selectedProposal = p; this.loadProposals(); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  processProposal(id: string) {
+    const processedBy = prompt('Processed by:') || 'system';
+    this.api.processPaymentProposal(id, { processedBy }).subscribe({
+      next: (p: any) => { this.selectedProposal = p; this.loadProposals(); alert('Payment run completed!'); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  cancelProposal(id: string) {
+    this.api.cancelPaymentProposal(id).subscribe({
+      next: () => { this.selectedProposal = null; this.loadProposals(); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  proposalBadgeClass(status: string) {
+    const m: Record<string, string> = {
+      Draft: 'badge-po-draft', Approved: 'badge-apinv-approved',
+      Processed: 'badge-po-fullyreceived', Cancelled: 'badge-po-cancelled'
+    };
+    return m[status] ?? 'badge-po-draft';
+  }
+
+  // ── Credit Notes ──────────────────────────────────────────────────────────
+
+  loadCreditNotes() {
+    this.api.getVendorCreditNotes().subscribe((d: any[]) => this.creditNotes = d);
+  }
+
+  openCreateCreditNote() {
+    const today = new Date().toISOString().split('T')[0];
+    this.cnForm = { vendorId: '', creditDate: today, description: '', subTotal: 0, taxAmount: 0, reason: 'Other', vendorCNRef: '' };
+    this.showCreateCN = true;
+  }
+
+  createCreditNote() {
+    this.api.createVendorCreditNote(this.cnForm).subscribe({
+      next: () => { this.showCreateCN = false; this.loadCreditNotes(); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  postCreditNote(id: string) {
+    this.api.submitVendorCNForApproval(id).subscribe({
+      next: () => this.loadCreditNotes(),
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  promptApplyCN(cn: any) {
+    const invoiceId = prompt('Enter AP Invoice ID to apply this credit against:');
+    if (!invoiceId) return;
+    const amount = parseFloat(prompt(`Apply how much? (Available: ${cn.availableCredit})`) ?? '0');
+    if (!amount) return;
+    this.api.applyVendorCreditNote(cn.id, { apInvoiceId: invoiceId, amount }).subscribe({
+      next: () => { this.loadCreditNotes(); alert('Credit applied!'); },
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  voidCreditNote(id: string) {
+    if (!confirm('Void this credit note?')) return;
+    this.api.voidVendorCreditNote(id).subscribe({
+      next: () => this.loadCreditNotes(),
+      error: (err: any) => alert('Failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
+  cnBadgeClass(status: string) {
+    const m: Record<string, string> = {
+      Draft: 'badge-po-draft', Posted: 'badge-apinv-approved',
+      Applied: 'badge-po-fullyreceived', Voided: 'badge-po-closed'
+    };
+    return m[status] ?? 'badge-po-draft';
   }
 
   /** Format match JSON notes into a readable summary string */

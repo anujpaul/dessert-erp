@@ -392,7 +392,7 @@ export interface CustomerLedger {
   totalInvoiced: number; totalPaid: number; outstandingBalance: number;
   entries: CustomerLedgerEntry[];
 }
-export type SalesOrderStatus = 'Draft' | 'Confirmed' | 'Picking' | 'Shipped' | 'Invoiced' | 'Closed' | 'Cancelled';
+export type SalesOrderStatus = 'Draft' | 'PendingApproval' | 'Confirmed' | 'Picking' | 'Shipped' | 'Delivered' | 'Invoiced' | 'Closed' | 'Cancelled';
 export interface SalesOrderLine {
   id: string; productVariantId: string; sku: string;
   productName: string; variantDescription?: string;
@@ -405,6 +405,7 @@ export interface SalesOrderSummary {
   orderDate: string; requestedShipDate?: string; customerRef: string;
   status: SalesOrderStatus; grandTotal: number; lineCount: number; createdAt: string;
   isExported: boolean; exportedAt?: string;
+  workflowInstanceId?: string; rejectionReason?: string;
 }
 export interface SalesOrder {
   id: string; orderNumber: string; customerId: string; customerName: string;
@@ -417,6 +418,8 @@ export interface SalesOrder {
   lines: SalesOrderLine[];
   isExported: boolean;
   exportedAt?: string;
+  workflowInstanceId?: string; rejectionReason?: string;
+  deliveredAt?: string; deliveryReference?: string;
 }
 export interface ARInvoice {
   id: string; invoiceNumber: string; customerId: string; customerName: string;
@@ -426,6 +429,7 @@ export interface ARInvoice {
   totalAmount: number; paidAmount: number; outstandingAmount: number;
   status: 'Draft' | 'Issued' | 'PartiallyPaid' | 'FullyPaid' | 'Overdue' | 'Voided';
   daysOutstanding: number; createdAt: string;
+  workflowInstanceId?: string; isSubmittedForApproval?: boolean;
 }
 export interface ARAgingReport {
   customerNumber: string; customerName: string;
@@ -538,7 +542,7 @@ export interface APAgingReport {
 }
 
 // ── Workflow Engine ───────────────────────────────────────────────────────────
-export type WorkflowDocumentType = 'APInvoice' | 'PurchaseOrder' | 'ARInvoice' | 'SalesOrder' | 'JournalEntry' | 'ExpenseReport';
+export type WorkflowDocumentType = 'APInvoice' | 'PurchaseOrder' | 'ARInvoice' | 'SalesOrder' | 'SalesQuotation' | 'ARCreditNote' | 'JournalEntry' | 'ExpenseReport';
 export type ApprovalStatus = 'NotRequired' | 'Draft' | 'Submitted' | 'UnderReview' | 'Approved' | 'Rejected' | 'Recalled';
 
 export interface WorkflowTemplateStep {
@@ -598,5 +602,21 @@ export interface ExpenseReportSummary {
   department?: string; purpose: string;
   periodStart: string; periodEnd: string;
   totalAmount: number; status: string; approvalStatus: ApprovalStatus;
+  createdAt: string;
+}
+
+// ── Currency ──────────────────────────────────────────────────────────────────
+export interface Currency {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string;
+  decimalPlaces: number;
+  exchangeRate: number;
+  isBase: boolean;
+  isActive: boolean;
+  numericCode?: number;
+  country?: string;
+  rateUpdatedAt?: string;
   createdAt: string;
 }

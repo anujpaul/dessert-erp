@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
 import { Customer, CustomerAddress, CustomerContact, CustomerLedger, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport, VariantLookup } from '../../core/models/erp.models';
 
-type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
+type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | 'creditnotes';
 
 @Component({
   selector: 'app-accounts-receivable',
@@ -325,13 +325,18 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
         <div class="detail-header">
           <div class="detail-title">{{ selectedOrder.orderNumber }}</div>
           <div class="action-row">
-            <button *ngIf="selectedOrder.status === 'Draft'" class="btn-primary-sm" (click)="soAction('confirm')">Confirm</button>
+            <button *ngIf="selectedOrder.status === 'Draft' && !selectedOrder.workflowInstanceId" class="btn-ghost-sm" (click)="submitSOForApproval(selectedOrder.id)">📤 Submit for Approval</button>
+            <button *ngIf="selectedOrder.status === 'PendingApproval'" class="btn-primary-sm" (click)="approveSOWorkflow(selectedOrder.id)">✅ Approve</button>
+            <button *ngIf="selectedOrder.status === 'PendingApproval'" class="btn-danger-sm" (click)="rejectSOWorkflow(selectedOrder.id)">❌ Reject</button>
+            <button *ngIf="selectedOrder.status === 'Draft' && !selectedOrder.workflowInstanceId" class="btn-primary-sm" (click)="soAction('confirm')">Confirm</button>
             <button *ngIf="selectedOrder.status === 'Confirmed'" class="btn-primary-sm" (click)="soAction('picking')">Start Picking</button>
             <button *ngIf="selectedOrder.status === 'Picking'" class="btn-primary-sm" (click)="soShip()">Ship</button>
+            <button *ngIf="selectedOrder.status === 'Shipped'" class="btn-primary-sm" (click)="soConfirmDelivery(selectedOrder.id)">📦 Confirm Delivery</button>
             <button *ngIf="selectedOrder.status === 'Shipped'" class="btn-primary-sm" (click)="soGenerateInvoice()">Generate Invoice</button>
-            <button *ngIf="['Draft','Confirmed','Picking'].includes(selectedOrder.status)" class="btn-danger-sm" (click)="soAction('cancel')">Cancel</button>
+            <button *ngIf="['Draft','Confirmed','Picking'].includes(selectedOrder.status) && selectedOrder.status !== 'PendingApproval'" class="btn-danger-sm" (click)="soAction('cancel')">Cancel</button>
             <button *ngIf="selectedOrder.isExported" class="btn-ghost-sm" (click)="resetExport(selectedOrder)" title="Mark this order for re-export on the next batch run">↩ Re-Export</button>
           </div>
+          <div *ngIf="selectedOrder.rejectionReason" style="color:#dc2626;font-size:.8rem;margin-top:.35rem">⚠️ Rejected: {{ selectedOrder.rejectionReason }}</div>
           <div *ngIf="selectedOrder.isExported" class="export-badge">
             ✓ Exported {{ selectedOrder.exportedAt | date:'MMM d, y HH:mm' }}
           </div>
@@ -430,7 +435,10 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
         <div class="detail-header">
           <div class="detail-title">{{ selectedInv.invoiceNumber }}</div>
           <div class="action-row">
-            <button *ngIf="selectedInv.status === 'Draft'" class="btn-primary-sm" (click)="issueInv(selectedInv.id)">Issue</button>
+            <button *ngIf="selectedInv.status === 'Draft' && !selectedInv.workflowInstanceId" class="btn-ghost-sm" (click)="submitInvoiceForApproval(selectedInv.id)">📤 Submit for Approval</button>
+            <button *ngIf="selectedInv.isSubmittedForApproval" class="btn-primary-sm" (click)="approveInvoiceWorkflow(selectedInv.id)">✅ Approve</button>
+            <button *ngIf="selectedInv.isSubmittedForApproval" class="btn-danger-sm" (click)="rejectInvoiceWorkflow(selectedInv.id)">❌ Reject</button>
+            <button *ngIf="selectedInv.status === 'Draft' && !selectedInv.isSubmittedForApproval" class="btn-primary-sm" (click)="issueInv(selectedInv.id)">Issue</button>
             <button *ngIf="['Issued','PartiallyPaid','Overdue'].includes(selectedInv.status)" class="btn-primary-sm" (click)="applyPayment(selectedInv)">Apply Payment</button>
             <button *ngIf="selectedInv.status !== 'FullyPaid' && selectedInv.status !== 'Voided'" class="btn-danger-sm" (click)="voidInv(selectedInv.id)">Void</button>
           </div>
@@ -513,6 +521,208 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
     </table>
     <div *ngIf="!agingReport.length" class="empty mt">No outstanding invoices. AR is clean! 🎉</div>
   </div>
+
+  <!-- ── QUOTATIONS ── -->
+  <div *ngIf="activeTab === 'quotations'" class="tab-content">
+    <div class="toolbar">
+      <input [(ngModel)]="quoSearch" placeholder="Search quotations…" class="search-input" />
+      <select [(ngModel)]="quoStatusFilter" (change)="loadQuotations()" class="filter-select">
+        <option value="">All Statuses</option>
+        <option *ngFor="let s of quoStatuses" [value]="s">{{ s }}</option>
+      </select>
+      <button class="btn-primary" (click)="showCreateQuo = true">+ New Quotation</button>
+    </div>
+
+    <div *ngIf="showCreateQuo" class="form-card">
+      <div class="form-title">New Sales Quotation</div>
+      <div class="form-grid">
+        <div class="form-field"><label>Customer *</label>
+          <select [(ngModel)]="quoForm.customerId">
+            <option value="">Select customer…</option>
+            <option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Quotation Date</label><input type="date" [(ngModel)]="quoForm.quotationDate" /></div>
+        <div class="form-field"><label>Valid Until</label><input type="date" [(ngModel)]="quoForm.validUntil" /></div>
+        <div class="form-field"><label>Customer Ref</label><input [(ngModel)]="quoForm.customerRef" /></div>
+        <div class="form-field"><label>Currency</label><input [(ngModel)]="quoForm.currency" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Description</label><input [(ngModel)]="quoForm.description" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Notes</label><input [(ngModel)]="quoForm.notes" /></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" (click)="createQuotation()" [disabled]="!quoForm.customerId">Create</button>
+        <button class="btn-ghost" (click)="showCreateQuo = false">Cancel</button>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="list-panel">
+        <div *ngFor="let q of filteredQuotations" class="list-row" [class.active]="selectedQuo?.id === q.id" (click)="selectQuotation(q.id)">
+          <div class="row-main">
+            <strong>{{ q.quotationNumber }}</strong>
+            <span class="badge" [class]="'badge-quo-' + q.status.toLowerCase()">{{ q.status }}</span>
+          </div>
+          <div class="row-sub">{{ q.customerName }}</div>
+          <div class="row-amounts">{{ q.quotationDate | date:'MMM d, y' }} · {{ q.grandTotal | currency }}</div>
+        </div>
+        <div *ngIf="!filteredQuotations.length" class="empty">No quotations.</div>
+      </div>
+
+      <div class="detail-panel" *ngIf="selectedQuo">
+        <div class="detail-header">
+          <div class="detail-title">{{ selectedQuo.quotationNumber }}</div>
+          <div class="action-row">
+            <button *ngIf="selectedQuo.status === 'Draft'" class="btn-ghost-sm" (click)="quoAction('submit')">📤 Submit</button>
+            <button *ngIf="selectedQuo.status === 'Pending'" class="btn-primary-sm" (click)="quoAction('approve')">✅ Approve</button>
+            <button *ngIf="selectedQuo.status === 'Pending'" class="btn-danger-sm" (click)="quoAction('reject')">❌ Reject</button>
+            <button *ngIf="selectedQuo.status === 'Draft'" class="btn-ghost-sm" (click)="quoAction('send')">📧 Send</button>
+            <button *ngIf="selectedQuo.status === 'Sent'" class="btn-primary-sm" (click)="quoAction('accept')">✅ Customer Accepted</button>
+            <button *ngIf="selectedQuo.status === 'Sent'" class="btn-danger-sm" (click)="quoAction('rejectbycust')">❌ Customer Rejected</button>
+            <button *ngIf="selectedQuo.status === 'Accepted'" class="btn-primary-sm" (click)="quoAction('convert')">➡️ Convert to SO</button>
+            <button *ngIf="!['Converted','Cancelled'].includes(selectedQuo.status)" class="btn-danger-sm" (click)="quoAction('cancel')">Cancel</button>
+          </div>
+          <div *ngIf="selectedQuo.rejectionReason" style="color:#dc2626;font-size:.8rem;margin-top:.35rem">⚠️ {{ selectedQuo.rejectionReason }}</div>
+        </div>
+        <div class="info-grid">
+          <div class="info-item"><span class="info-label">Customer</span><span>{{ selectedQuo.customerName }}</span></div>
+          <div class="info-item"><span class="info-label">Status</span><span class="badge" [class]="'badge-quo-' + selectedQuo.status.toLowerCase()">{{ selectedQuo.status }}</span></div>
+          <div class="info-item"><span class="info-label">Quotation Date</span><span>{{ selectedQuo.quotationDate | date:'mediumDate' }}</span></div>
+          <div class="info-item"><span class="info-label">Valid Until</span><span>{{ selectedQuo.validUntil | date:'mediumDate' }}</span></div>
+          <div class="info-item"><span class="info-label">Ref</span><span>{{ selectedQuo.customerRef || '—' }}</span></div>
+          <div class="info-item"><span class="info-label">Grand Total</span><span><strong>{{ selectedQuo.grandTotal | currency }}</strong></span></div>
+          <div class="info-item" *ngIf="selectedQuo.convertedToSOId"><span class="info-label">Converted</span><span>✓ SO created</span></div>
+        </div>
+
+        <!-- Add line (Draft only) -->
+        <div *ngIf="selectedQuo.status === 'Draft'" class="add-line-row">
+          <input class="filter-select" [(ngModel)]="quoVariantQuery" (ngModelChange)="searchQuoVariants()" placeholder="Search SKU or product…" style="flex:2" />
+          <div *ngIf="quoVariantResults.length" class="variant-dropdown">
+            <div *ngFor="let v of quoVariantResults" class="variant-option" (click)="selectQuoVariant(v)">
+              <strong>{{ v.sku }}</strong> — {{ v.productName }}
+              <span class="variant-price">{{ v.effectivePrice | currency }}</span>
+            </div>
+          </div>
+          <div *ngIf="selectedQuoVariant" class="selected-variant-chip">
+            {{ selectedQuoVariant.sku }} · {{ selectedQuoVariant.productName }}
+            <button (click)="clearQuoVariant()" style="background:none;border:none;cursor:pointer;color:#ef4444">✕</button>
+          </div>
+          <input type="number" [(ngModel)]="quoLineQty" min="1" placeholder="Qty" style="width:70px;padding:.4rem;border:1px solid #d1d5db;border-radius:6px" />
+          <button class="btn-primary-sm" (click)="addQuoLine()" [disabled]="!selectedQuoVariant">Add</button>
+        </div>
+
+        <div class="sub-section-title">Quotation Lines</div>
+        <table class="data-table">
+          <thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th><th *ngIf="selectedQuo.status === 'Draft'"></th></tr></thead>
+          <tbody>
+            <tr *ngFor="let l of selectedQuo.lines">
+              <td><code>{{ l.sku }}</code> {{ l.productName }}<span *ngIf="l.variantDescription" style="color:#6b7280;margin-left:.3rem">· {{ l.variantDescription }}</span></td>
+              <td class="num">{{ l.quantity }}</td>
+              <td class="num">{{ l.unitPrice | currency }}</td>
+              <td class="num"><strong>{{ l.lineTotal | currency }}</strong></td>
+              <td *ngIf="selectedQuo.status === 'Draft'"><button class="btn-xs btn-red" (click)="removeQuoLine(l.id)">✕</button></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="total-row">
+              <td colspan="3"><strong>Grand Total</strong></td>
+              <td class="num"><strong>{{ selectedQuo.grandTotal | currency }}</strong></td>
+              <td *ngIf="selectedQuo.status === 'Draft'"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="detail-panel empty-detail" *ngIf="!selectedQuo">Select a quotation.</div>
+    </div>
+  </div>
+
+  <!-- ── CREDIT NOTES ── -->
+  <div *ngIf="activeTab === 'creditnotes'" class="tab-content">
+    <div class="toolbar">
+      <input [(ngModel)]="cnSearch" placeholder="Search credit notes…" class="search-input" />
+      <button class="btn-primary" (click)="showCreateCN = true">+ New Credit Note</button>
+    </div>
+
+    <div *ngIf="showCreateCN" class="form-card">
+      <div class="form-title">New Customer Credit Note</div>
+      <div class="form-grid">
+        <div class="form-field"><label>Customer *</label>
+          <select [(ngModel)]="cnForm.customerId">
+            <option value="">Select customer…</option>
+            <option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Credit Date</label><input type="date" [(ngModel)]="cnForm.creditDate" /></div>
+        <div class="form-field"><label>Reason</label>
+          <select [(ngModel)]="cnForm.reason">
+            <option *ngFor="let r of cnReasons" [value]="r">{{ r }}</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Sub Total</label><input type="number" [(ngModel)]="cnForm.subTotal" /></div>
+        <div class="form-field"><label>Tax Amount</label><input type="number" [(ngModel)]="cnForm.taxAmount" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Description</label><input [(ngModel)]="cnForm.description" /></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Notes</label><input [(ngModel)]="cnForm.notes" /></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" (click)="createCreditNote()" [disabled]="!cnForm.customerId">Create</button>
+        <button class="btn-ghost" (click)="showCreateCN = false">Cancel</button>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="list-panel">
+        <div *ngFor="let cn of filteredCreditNotes" class="list-row" [class.active]="selectedCN?.id === cn.id" (click)="selectedCN = cn">
+          <div class="row-main">
+            <strong>{{ cn.creditNoteNumber }}</strong>
+            <span class="badge" [class]="'badge-cn-' + cn.status.toLowerCase()">{{ cn.status }}</span>
+          </div>
+          <div class="row-sub">{{ cn.customerName }} · {{ cn.reason }}</div>
+          <div class="row-amounts">{{ cn.creditDate | date:'MMM d, y' }} · {{ cn.totalAmount | currency }}</div>
+        </div>
+        <div *ngIf="!filteredCreditNotes.length" class="empty">No credit notes.</div>
+      </div>
+
+      <div class="detail-panel" *ngIf="selectedCN">
+        <div class="detail-header">
+          <div class="detail-title">{{ selectedCN.creditNoteNumber }}</div>
+          <div class="action-row">
+            <button *ngIf="selectedCN.status === 'Draft'" class="btn-ghost-sm" (click)="cnAction('submit')">📤 Submit</button>
+            <button *ngIf="selectedCN.status === 'PendingApproval'" class="btn-primary-sm" (click)="cnAction('approve')">✅ Approve</button>
+            <button *ngIf="selectedCN.status === 'PendingApproval'" class="btn-danger-sm" (click)="cnAction('reject')">❌ Reject</button>
+            <button *ngIf="selectedCN.status === 'Draft'" class="btn-primary-sm" (click)="cnAction('issue')">Issue</button>
+            <button *ngIf="selectedCN.status === 'Issued' && selectedCN.availableCredit > 0" class="btn-primary-sm" (click)="cnAction('apply')">Apply Credit</button>
+            <button *ngIf="!['Applied','Voided'].includes(selectedCN.status)" class="btn-danger-sm" (click)="cnAction('void')">Void</button>
+          </div>
+        </div>
+        <div class="info-grid">
+          <div class="info-item"><span class="info-label">Customer</span><span>{{ selectedCN.customerName }}</span></div>
+          <div class="info-item"><span class="info-label">Status</span><span class="badge" [class]="'badge-cn-' + selectedCN.status.toLowerCase()">{{ selectedCN.status }}</span></div>
+          <div class="info-item"><span class="info-label">Credit Date</span><span>{{ selectedCN.creditDate | date:'mediumDate' }}</span></div>
+          <div class="info-item"><span class="info-label">Reason</span><span>{{ selectedCN.reason }}</span></div>
+          <div class="info-item"><span class="info-label">Sub Total</span><span>{{ selectedCN.subTotal | currency }}</span></div>
+          <div class="info-item"><span class="info-label">Tax</span><span>{{ selectedCN.taxAmount | currency }}</span></div>
+          <div class="info-item"><span class="info-label">Total</span><span><strong>{{ selectedCN.totalAmount | currency }}</strong></span></div>
+          <div class="info-item"><span class="info-label">Applied</span><span>{{ selectedCN.appliedAmount | currency }}</span></div>
+          <div class="info-item"><span class="info-label">Available</span><span [class.ok]="selectedCN.availableCredit > 0"><strong>{{ selectedCN.availableCredit | currency }}</strong></span></div>
+          <div class="info-item" *ngIf="selectedCN.invoiceNumber"><span class="info-label">Invoice</span><span>{{ selectedCN.invoiceNumber }}</span></div>
+          <div class="info-item" *ngIf="selectedCN.description" style="grid-column:1/-1"><span class="info-label">Description</span><span>{{ selectedCN.description }}</span></div>
+        </div>
+
+        <!-- Apply credit form -->
+        <div *ngIf="showApplyCNForm" class="form-card">
+          <div class="form-title">Apply Credit to Invoice</div>
+          <div class="form-grid">
+            <div class="form-field"><label>Invoice ID</label><input [(ngModel)]="applyCNForm.arInvoiceId" placeholder="Invoice GUID" /></div>
+            <div class="form-field"><label>Amount</label><input type="number" [(ngModel)]="applyCNForm.amount" [max]="selectedCN.availableCredit" /></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" (click)="submitApplyCN()">Apply</button>
+            <button class="btn-ghost" (click)="showApplyCNForm = false">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <div class="detail-panel empty-detail" *ngIf="!selectedCN">Select a credit note.</div>
+    </div>
+  </div>
 </div>
   `,
   styles: [`
@@ -592,6 +802,26 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging';
     .badge-inv-fullypaid { background: #dcfce7; color: #166534; }
     .badge-inv-overdue { background: #fee2e2; color: #dc2626; }
     .badge-inv-voided { background: #f1f5f9; color: #94a3b8; }
+    .badge-so-pendinganpproval { background: #fef3c7; color: #92400e; }
+    .badge-so-pendingapproval { background: #fef3c7; color: #92400e; }
+    .badge-so-delivered { background: #d1fae5; color: #065f46; }
+    .badge-quo-draft { background: #f1f5f9; color: #475569; }
+    .badge-quo-pending { background: #fef3c7; color: #92400e; }
+    .badge-quo-approved { background: #dbeafe; color: #1d4ed8; }
+    .badge-quo-rejected { background: #fee2e2; color: #dc2626; }
+    .badge-quo-sent { background: #e0f2fe; color: #0369a1; }
+    .badge-quo-accepted { background: #dcfce7; color: #166534; }
+    .badge-quo-rejectedbycustomer { background: #fee2e2; color: #dc2626; }
+    .badge-quo-converted { background: #d1fae5; color: #065f46; }
+    .badge-quo-cancelled { background: #f1f5f9; color: #94a3b8; }
+    .badge-cn-draft { background: #f1f5f9; color: #475569; }
+    .badge-cn-pendingapproval { background: #fef3c7; color: #92400e; }
+    .badge-cn-approved { background: #dbeafe; color: #1d4ed8; }
+    .badge-cn-rejected { background: #fee2e2; color: #dc2626; }
+    .badge-cn-issued { background: #dcfce7; color: #166534; }
+    .badge-cn-applied { background: #d1fae5; color: #065f46; }
+    .badge-cn-voided { background: #f1f5f9; color: #94a3b8; }
+    .ok { color: #166534; }
     .empty { padding: 2rem; text-align: center; color: #94a3b8; font-size: .875rem; }
     code { font-family: monospace; background: #f1f5f9; padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
     .variant-dropdown { position: absolute; z-index: 100; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.1); max-height: 220px; overflow-y: auto; min-width: 380px; margin-top: .25rem; }
@@ -655,6 +885,8 @@ export class AccountsReceivableComponent implements OnInit {
     { id: 'salesorders' as Tab, label: 'Sales Orders', icon: '🛒' },
     { id: 'invoices' as Tab, label: 'Invoices', icon: '📄' },
     { id: 'aging' as Tab, label: 'Aging Report', icon: '📅' },
+    { id: 'quotations' as Tab, label: 'Quotations', icon: '📋' },
+    { id: 'creditnotes' as Tab, label: 'Credit Notes', icon: '🔄' },
   ];
 
   soStatuses = ['Draft','Confirmed','Picking','Shipped','Invoiced','Closed','Cancelled'];
@@ -663,7 +895,7 @@ export class AccountsReceivableComponent implements OnInit {
   selectedCust: Customer | null = null;
   custSearch = '';
   showCustForm = false;
-  editCust: Customer | null = null;
+  editCust: Customer | null =null;
   custForm = { name:'', email:'', phone:'', currency:'USD', paymentTermsDays: 30, creditLimit: 10000,
                billingAddress:'', shippingAddress:'', website:'', notes:'' };
   custLedger: CustomerLedger | null = null;
@@ -687,7 +919,6 @@ export class AccountsReceivableComponent implements OnInit {
   showCreateSO = false;
   soForm = { customerId:'', orderDate:'', requestedShipDate:'', customerRef:'', description:'', currency:'USD' };
 
-  // Customer search-dropdown inside SO form
   custSearchInSO = '';
   custDropdownOptions: Customer[] = [];
   showCustDropdown = false;
@@ -704,19 +935,10 @@ export class AccountsReceivableComponent implements OnInit {
   onCustSearchInSO() {
     const q = this.custSearchInSO.trim();
     this.custDropdownOptions = [];
-
-    if (q.length < 2) {
-      // Don't search until at least 2 chars — avoids loading 1M records
-      this.showCustDropdown = q.length > 0; // show "type more" hint if 1 char
-      return;
-    }
-
-    // Debounce — wait 300ms after user stops typing before hitting the API
+    if (q.length < 2) { this.showCustDropdown = q.length > 0; return; }
     clearTimeout(this.custSearchTimer);
     this.custSearchTimer = setTimeout(() => {
       const lower = q.toLowerCase();
-      // Search locally if customers are already loaded (< ~500 records typical for SMB)
-      // For large datasets the backend search endpoint would be called here instead
       this.custDropdownOptions = this.customers
         .filter(c => c.name.toLowerCase().includes(lower) || c.customerNumber.toLowerCase().includes(lower))
         .slice(0, 10);
@@ -731,16 +953,8 @@ export class AccountsReceivableComponent implements OnInit {
     this.soForm.currency = c.currency;
   }
 
-  clearSOCustomer() {
-    this.soForm.customerId = '';
-    this.custSearchInSO = '';
-    this.custDropdownOptions = [];
-  }
-
-  hideCustDropdown() {
-    // Delay to allow mousedown on dropdown options to fire first
-    setTimeout(() => { this.showCustDropdown = false; }, 200);
-  }
+  clearSOCustomer() { this.soForm.customerId = ''; this.custSearchInSO = ''; this.custDropdownOptions = []; }
+  hideCustDropdown() { setTimeout(() => { this.showCustDropdown = false; }, 200); }
 
   createCustomerInline() {
     if (!this.inlineCustForm.name.trim()) { this.inlineCustError = 'Name is required.'; return; }
@@ -756,7 +970,6 @@ export class AccountsReceivableComponent implements OnInit {
     });
   }
 
-  // Variant search for SO line picker
   variantSearchQuery = '';
   variantResults: VariantLookup[] = [];
   selectedVariant: VariantLookup | null = null;
@@ -774,6 +987,33 @@ export class AccountsReceivableComponent implements OnInit {
   paymentForm = { amount: 0, paymentDate: '', paymentMethod: 'BankTransfer', reference: '' };
 
   agingReport: ARAgingReport[] = [];
+
+  // Quotations
+  quotations: any[] = [];
+  selectedQuo: any | null = null;
+  quoSearch = '';
+  quoStatusFilter = '';
+  showCreateQuo = false;
+  quoStatuses = ['Draft','Pending','Approved','Rejected','Sent','Accepted','RejectedByCustomer','Converted','Cancelled'];
+  quoForm: any = { customerId:'', quotationDate: new Date().toISOString().split('T')[0],
+    validUntil:'', customerRef:'', description:'', notes:'', currency:'USD' };
+  quoVariantQuery = '';
+  quoVariantResults: any[] = [];
+  selectedQuoVariant: any | null = null;
+  quoLineQty = 1;
+  private quoVariantTimer: any;
+
+  // Credit Notes
+  creditNotes: any[] = [];
+  selectedCN: any | null = null;
+  cnSearch = '';
+  showCreateCN = false;
+  cnReasons = ['Return','Discount','PriceAdjustment','DuplicateInvoice','Other'];
+  cnForm: any = { customerId:'', creditDate: new Date().toISOString().split('T')[0],
+    reason:'Return', subTotal: 0, taxAmount: 0, description:'', notes:'' };
+  showApplyCNForm = false;
+  applyCNForm: any = { arInvoiceId:'', amount: 0 };
+
   get agingTotals() {
     return {
       current: this.agingReport.reduce((s,r) => s + r.current, 0),
@@ -793,6 +1033,14 @@ export class AccountsReceivableComponent implements OnInit {
     const q = this.invSearch.toLowerCase();
     return this.arInvoices.filter(i => !q || i.invoiceNumber.toLowerCase().includes(q) || i.customerName.toLowerCase().includes(q));
   }
+  get filteredQuotations() {
+    const q = this.quoSearch.toLowerCase();
+    return this.quotations.filter(q2 => !q || q2.quotationNumber.toLowerCase().includes(q) || q2.customerName.toLowerCase().includes(q));
+  }
+  get filteredCreditNotes() {
+    const q = this.cnSearch.toLowerCase();
+    return this.creditNotes.filter(cn => !q || cn.creditNoteNumber.toLowerCase().includes(q) || cn.customerName.toLowerCase().includes(q));
+  }
 
   constructor(private api: ApiService) {}
 
@@ -803,18 +1051,18 @@ export class AccountsReceivableComponent implements OnInit {
     this.loadAging();
   }
 
-  setTab(t: Tab) { this.activeTab = t; }
+  setTab(t: Tab) {
+    this.activeTab = t;
+    if (t === 'quotations' && !this.quotations.length) this.loadQuotations();
+    if (t === 'creditnotes' && !this.creditNotes.length) this.loadCreditNotes();
+  }
 
   private blankCustForm() {
     return { name:'', email:'', phone:'', currency:'USD', paymentTermsDays: 30, creditLimit: 10000,
              billingAddress:'', shippingAddress:'', website:'', notes:'' };
   }
 
-  openCreateCust() {
-    this.editCust = null;
-    this.custForm = this.blankCustForm();
-    this.showCustForm = true;
-  }
+  openCreateCust() { this.editCust = null; this.custForm = this.blankCustForm(); this.showCustForm = true; }
 
   selectCustomer(c: Customer) {
     this.selectedCust = c;
@@ -830,44 +1078,36 @@ export class AccountsReceivableComponent implements OnInit {
 
   openEditCust(c: Customer) {
     this.editCust = c;
-    this.custForm = {
-      name: c.name, email: c.email ?? '', phone: c.phone ?? '', currency: c.currency,
-      paymentTermsDays: c.paymentTermsDays, creditLimit: c.creditLimit,
+    this.custForm = { name: c.name, email: c.email ?? '', phone: c.phone ?? '',
+      currency: c.currency, paymentTermsDays: c.paymentTermsDays, creditLimit: c.creditLimit,
       billingAddress: c.billingAddress ?? '', shippingAddress: c.shippingAddress ?? '',
-      website: c.website ?? '', notes: c.notes ?? ''
-    };
+      website: c.website ?? '', notes: c.notes ?? '' };
     this.showCustForm = true;
   }
 
   saveCustomer() {
     if (!this.custForm.name.trim()) return;
     if (this.editCust) {
-      this.api.updateCustomer(this.editCust.id, this.custForm).subscribe(updated => {
-        this.customers = this.customers.map(c => c.id === updated.id ? updated : c);
-        if (this.selectedCust?.id === updated.id) this.selectedCust = updated;
+      this.api.updateCustomer(this.editCust.id, this.custForm).subscribe(d => {
+        this.customers = this.customers.map(c => c.id === d.id ? d : c);
+        this.selectedCust = d;
         this.showCustForm = false;
         this.editCust = null;
       });
     } else {
       this.api.createCustomer(this.custForm).subscribe(d => {
         this.customers = [...this.customers, d];
-        this.showCustForm = false;
         this.selectedCust = d;
+        this.showCustForm = false;
       });
     }
   }
 
   loadCustLedger(id: string) {
-    if (this.custLedger?.customerId === id) { this.showCustLedger = !this.showCustLedger; return; }
-    this.api.getCustomerLedger(id).subscribe(d => {
-      this.custLedger = d;
-      this.showCustLedger = true;
-    });
+    this.api.getCustomerLedger(id).subscribe(d => { this.custLedger = d; this.showCustLedger = true; });
   }
 
-  toggleCustLedger() { this.showCustLedger = !this.showCustLedger; }
-
-  // ── Address CRUD ──────────────────────────────────────────────────────────
+  // Address CRUD
   openAddressForm() {
     this.editingAddrId = null;
     this.addrForm = { label:'', addressType:'Billing', line1:'', line2:'', city:'', state:'', postalCode:'', country:'US' };
@@ -877,12 +1117,12 @@ export class AccountsReceivableComponent implements OnInit {
   editAddress(a: any) {
     this.editingAddrId = a.id;
     this.addrForm = { label: a.label, addressType: a.addressType, line1: a.line1, line2: a.line2 ?? '',
-      city: a.city, state: a.state ?? '', postalCode: a.postalCode ?? '', country: a.country };
+      city: a.city, state: a.state ?? '', postalCode: a.postalCode ?? '', country: a.country ?? 'US' };
     this.showAddrForm = true;
   }
 
   saveAddress() {
-    if (!this.selectedCust || !this.addrForm.label.trim() || !this.addrForm.line1.trim() || !this.addrForm.city.trim()) return;
+    if (!this.selectedCust || !this.addrForm.line1.trim()) return;
     const req = { ...this.addrForm };
     if (this.editingAddrId) {
       this.api.updateCustomerAddress(this.selectedCust.id, this.editingAddrId, req).subscribe(d => {
@@ -913,7 +1153,7 @@ export class AccountsReceivableComponent implements OnInit {
     });
   }
 
-  // ── Contact CRUD ──────────────────────────────────────────────────────────
+  // Contact CRUD
   openContactForm() {
     this.editingContactId = null;
     this.contactForm = { name:'', title:'', email:'', phone:'', mobile:'', notes:'' };
@@ -1005,10 +1245,7 @@ export class AccountsReceivableComponent implements OnInit {
 
   addSOLine() {
     if (!this.selectedOrder || !this.selectedVariant) return;
-    // If a coupon is active and it's a percentage discount, apply it to the new line too
-    const discountPct = (this.appliedCoupon?.discountType === 'PercentageOff')
-      ? this.appliedCoupon.discountValue
-      : 0;
+    const discountPct = (this.appliedCoupon?.discountType === 'PercentageOff') ? this.appliedCoupon.discountValue : 0;
     this.api.addSalesOrderLine(this.selectedOrder.id, {
       productVariantId: this.selectedVariant.variantId,
       quantity: this.addLineQty,
@@ -1022,10 +1259,8 @@ export class AccountsReceivableComponent implements OnInit {
 
   get couponDiscountLabel(): string {
     if (!this.appliedCoupon) return '';
-    if (this.appliedCoupon.discountType === 'PercentageOff')
-      return this.appliedCoupon.discountValue + '%';
-    if (this.appliedCoupon.discountType === 'FixedAmountOff')
-      return '$' + this.appliedCoupon.discountValue;
+    if (this.appliedCoupon.discountType === 'PercentageOff') return this.appliedCoupon.discountValue + '%';
+    if (this.appliedCoupon.discountType === 'FixedAmountOff') return '$' + this.appliedCoupon.discountValue;
     return 'Buy ' + this.appliedCoupon.discountValue + ' get free';
   }
 
@@ -1033,13 +1268,9 @@ export class AccountsReceivableComponent implements OnInit {
     const code = this.couponCodeInput.trim().toUpperCase();
     if (!code || !this.selectedOrder) return;
     this.couponError = '';
-    const orderAmount = this.selectedOrder.grandTotal;
-    this.api.validateMarketingCoupon(code, orderAmount).subscribe({
+    this.api.validateMarketingCoupon(code, this.selectedOrder.grandTotal).subscribe({
       next: (result) => {
-        if (!result.isValid) {
-          this.couponError = result.message || 'Invalid coupon.';
-          return;
-        }
+        if (!result.isValid) { this.couponError = result.message || 'Invalid coupon.'; return; }
         this.appliedCoupon = { code, promotionName: result.promotionName || '', discountType: result.discountType || '', discountValue: result.discountValue };
         this.couponCodeInput = '';
         this.couponError = '';
@@ -1048,9 +1279,7 @@ export class AccountsReceivableComponent implements OnInit {
     });
   }
 
-  loadAging() {
-    this.api.getARAgingReport().subscribe(d => this.agingReport = d);
-  }
+  loadAging() { this.api.getARAgingReport().subscribe(d => this.agingReport = d); }
 
   issueInv(id: string) {
     this.api.issueInvoice(id).subscribe(() => {
@@ -1097,7 +1326,7 @@ export class AccountsReceivableComponent implements OnInit {
   soAction(action: 'confirm' | 'picking' | 'cancel') {
     if (!this.selectedOrder) return;
     const id = this.selectedOrder.id;
-    let obs$;
+    let obs$: any;
     if (action === 'confirm') obs$ = this.api.confirmSalesOrder(id);
     else if (action === 'picking') obs$ = this.api.startPicking(id);
     else obs$ = this.api.cancelSalesOrder(id);
@@ -1120,17 +1349,167 @@ export class AccountsReceivableComponent implements OnInit {
   }
 
   resetExport(order: any) {
-    this.api.resetExport('SalesOrder', [order.id]).subscribe(() =>
-      this.loadSalesOrders()
-    );
+    this.api.resetExport('SalesOrder', [order.id]).subscribe(() => this.loadSalesOrders());
   }
 
-  removeCoupon() {
-    this.appliedCoupon = null;
-  }
+  removeCoupon() { this.appliedCoupon = null; }
 
   removeSOLine(lineId: string) {
     if (!this.selectedOrder) return;
-    this.api.removeSalesOrderLine(this.selectedOrder.id, lineId).subscribe(() => this.api.getSalesOrder(this.selectedOrder!.id).subscribe(d => this.selectedOrder = d));
+    this.api.removeSalesOrderLine(this.selectedOrder.id, lineId).subscribe(() =>
+      this.api.getSalesOrder(this.selectedOrder!.id).subscribe(d => this.selectedOrder = d)
+    );
+  }
+
+  toggleCustLedger() { this.showCustLedger = !this.showCustLedger; }
+
+  // SO Workflow
+  submitSOForApproval(id: string) {
+    const submittedBy = prompt('Submitter name / email:') || 'system';
+    this.api.submitSOForApproval(id, submittedBy).subscribe(d => this.selectedOrder = d);
+  }
+
+  approveSOWorkflow(id: string) { this.api.approveSOWorkflow(id).subscribe(d => this.selectedOrder = d); }
+
+  rejectSOWorkflow(id: string) {
+    const reason = prompt('Rejection reason:') || '';
+    this.api.rejectSOWorkflow(id, reason).subscribe(d => this.selectedOrder = d);
+  }
+
+  soConfirmDelivery(id: string) {
+    const ref = prompt('Delivery reference (optional):') || '';
+    const notes = prompt('Delivery notes (optional):') || '';
+    this.api.confirmSODelivery(id, { deliveryReference: ref, notes }).subscribe(d => this.selectedOrder = d);
+  }
+
+  // AR Invoice Workflow
+  submitInvoiceForApproval(id: string) {
+    const submittedBy = prompt('Submitter name / email:') || 'system';
+    this.api.submitARInvoiceForApproval(id, submittedBy).subscribe(d => {
+      this.selectedInv = d;
+      this.arInvoices = this.arInvoices.map(i => i.id === id ? d : i);
+    });
+  }
+
+  approveInvoiceWorkflow(id: string) {
+    this.api.approveARInvoice(id).subscribe(d => {
+      this.selectedInv = d;
+      this.arInvoices = this.arInvoices.map(i => i.id === id ? d : i);
+    });
+  }
+
+  rejectInvoiceWorkflow(id: string) {
+    const reason = prompt('Rejection reason:') || '';
+    this.api.rejectARInvoice(id, reason).subscribe(d => {
+      this.selectedInv = d;
+      this.arInvoices = this.arInvoices.map(i => i.id === id ? d : i);
+    });
+  }
+
+  // Quotations
+  loadQuotations() {
+    this.api.getQuotations(this.quoStatusFilter || undefined).subscribe(d => this.quotations = d);
+  }
+
+  selectQuotation(id: string) { this.api.getQuotation(id).subscribe(d => this.selectedQuo = d); }
+
+  createQuotation() {
+    if (!this.quoForm.customerId) return;
+    this.api.createQuotation(this.quoForm).subscribe(d => {
+      this.loadQuotations();
+      this.selectedQuo = d;
+      this.showCreateQuo = false;
+      this.quoForm = { customerId:'', quotationDate: new Date().toISOString().split('T')[0],
+        validUntil:'', customerRef:'', description:'', notes:'', currency:'USD' };
+    });
+  }
+
+  quoAction(action: string) {
+    if (!this.selectedQuo) return;
+    const id = this.selectedQuo.id;
+    let obs$: any;
+    switch (action) {
+      case 'submit': { const by = prompt('Submitter:') || 'system'; obs$ = this.api.submitQuotationForApproval(id, by); break; }
+      case 'approve': obs$ = this.api.approveQuotation(id); break;
+      case 'reject': { const r = prompt('Reason:') || ''; obs$ = this.api.rejectQuotation(id, r); break; }
+      case 'send': obs$ = this.api.sendQuotation(id); break;
+      case 'accept': obs$ = this.api.acceptQuotation(id); break;
+      case 'rejectbycust': { const r = prompt('Reason (optional):') || ''; obs$ = this.api.rejectQuotationByCustomer(id, r); break; }
+      case 'convert': {
+        const ref = prompt('Order reference (optional):') || '';
+        this.api.convertQuotationToSO(id, { customerRef: ref }).subscribe((so: any) => {
+          alert('Sales Order ' + so.orderNumber + ' created.');
+          this.loadSalesOrders(); this.loadQuotations();
+        }); return;
+      }
+      case 'cancel':
+        if (!confirm('Cancel this quotation?')) return;
+        this.api.cancelQuotation(id).subscribe(() => { this.loadQuotations(); this.selectedQuo = null; });
+        return;
+    }
+    if (obs$) obs$.subscribe((d: any) => { this.selectedQuo = d; this.loadQuotations(); });
+  }
+
+  searchQuoVariants() {
+    if (this.quoVariantTimer) clearTimeout(this.quoVariantTimer);
+    const q = this.quoVariantQuery.trim();
+    if (q.length < 2) { this.quoVariantResults = []; return; }
+    this.quoVariantTimer = setTimeout(() => {
+      this.api.searchVariants(q).subscribe(r => this.quoVariantResults = r);
+    }, 250);
+  }
+
+  selectQuoVariant(v: any) { this.selectedQuoVariant = v; this.quoVariantQuery = ''; this.quoVariantResults = []; }
+  clearQuoVariant() { this.selectedQuoVariant = null; this.quoVariantQuery = ''; this.quoVariantResults = []; }
+
+  addQuoLine() {
+    if (!this.selectedQuo || !this.selectedQuoVariant) return;
+    this.api.addQuotationLine(this.selectedQuo.id, { productVariantId: this.selectedQuoVariant.variantId, quantity: this.quoLineQty })
+      .subscribe(d => { this.selectedQuo = d; this.clearQuoVariant(); this.quoLineQty = 1; });
+  }
+
+  removeQuoLine(lineId: string) {
+    if (!this.selectedQuo) return;
+    this.api.removeQuotationLine(this.selectedQuo.id, lineId).subscribe(() =>
+      this.api.getQuotation(this.selectedQuo!.id).subscribe(d => this.selectedQuo = d));
+  }
+
+  // Credit Notes
+  loadCreditNotes() { this.api.getARCreditNotes().subscribe(d => this.creditNotes = d); }
+
+  createCreditNote() {
+    if (!this.cnForm.customerId) return;
+    this.api.createARCreditNote(this.cnForm).subscribe(d => {
+      this.loadCreditNotes();
+      this.selectedCN = d;
+      this.showCreateCN = false;
+      this.cnForm = { customerId:'', creditDate: new Date().toISOString().split('T')[0],
+        reason:'Return', subTotal: 0, taxAmount: 0, description:'', notes:'' };
+    });
+  }
+
+  cnAction(action: string) {
+    if (!this.selectedCN) return;
+    const id = this.selectedCN.id;
+    let obs$: any;
+    switch (action) {
+      case 'submit': { const by = prompt('Submitter:') || 'system'; obs$ = this.api.submitCreditNoteForApproval(id, by); break; }
+      case 'approve': obs$ = this.api.approveCreditNote(id); break;
+      case 'reject': { const r = prompt('Reason:') || ''; obs$ = this.api.rejectCreditNote(id, r); break; }
+      case 'issue': obs$ = this.api.issueARCreditNote(id); break;
+      case 'apply': this.applyCNForm = { arInvoiceId:'', amount: this.selectedCN.availableCredit }; this.showApplyCNForm = true; return;
+      case 'void': if (!confirm('Void?')) return; obs$ = this.api.voidARCreditNote(id); break;
+    }
+    if (obs$) obs$.subscribe((d: any) => { this.selectedCN = d; this.loadCreditNotes(); });
+  }
+
+  submitApplyCN() {
+    if (!this.selectedCN || !this.applyCNForm.arInvoiceId) return;
+    this.api.applyARCreditNote(this.selectedCN.id, this.applyCNForm).subscribe(d => {
+      this.selectedCN = d;
+      this.showApplyCNForm = false;
+      this.loadCreditNotes();
+      this.api.getARInvoices().subscribe(inv => this.arInvoices = inv);
+    });
   }
 }

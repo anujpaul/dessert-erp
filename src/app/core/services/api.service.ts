@@ -95,6 +95,19 @@ export class ApiService {
   getTrialBalance = (periodId: string) =>
     this.http.get<TrialBalanceLine[]>(`${this.base}/gl/reports/trial-balance?fiscalPeriodId=${periodId}`);
 
+  // ── Currencies (GL) ───────────────────────────────────────────────────────
+  getCurrencies = (activeOnly = false) =>
+    this.http.get<any[]>(`${this.base}/gl/currencies?activeOnly=${activeOnly}`);
+  getBaseCurrency = () => this.http.get<any>(`${this.base}/gl/currencies/base`);
+  getCurrency = (id: string) => this.http.get<any>(`${this.base}/gl/currencies/${id}`);
+  createCurrency = (r: any) => this.http.post<any>(`${this.base}/gl/currencies`, r);
+  updateCurrency = (id: string, r: any) => this.http.put<any>(`${this.base}/gl/currencies/${id}`, r);
+  updateCurrencyExchangeRate = (id: string, r: { exchangeRate: number }) =>
+    this.http.patch<any>(`${this.base}/gl/currencies/${id}/exchange-rate`, r);
+  setBaseCurrency = (id: string) => this.http.post<any>(`${this.base}/gl/currencies/${id}/set-base`, {});
+  activateCurrency = (id: string) => this.http.post<void>(`${this.base}/gl/currencies/${id}/activate`, {});
+  deactivateCurrency = (id: string) => this.http.post<void>(`${this.base}/gl/currencies/${id}/deactivate`, {});
+
   // ── Accounts Receivable ────────────────────────────────────────────────────
   getCustomers = () => this.http.get<Customer[]>(`${this.base}/ar/customers`);
   createCustomer = (r: any) => this.http.post<Customer>(`${this.base}/ar/customers`, r);
@@ -129,6 +142,87 @@ export class ApiService {
   voidARInvoice = (id: string) => this.http.post<void>(`${this.base}/ar/invoices/${id}/void`, {});
   createARPayment = (r: any) => this.http.post<any>(`${this.base}/ar/payments`, r);
   getARAgingReport = () => this.http.get<ARAgingReport[]>(`${this.base}/ar/reports/aging`);
+
+  // ── S2C: SO Workflow ─────────────────────────────────────────────────────
+  submitSOForApproval = (id: string, submittedBy: string) =>
+    this.http.post<any>(`${this.base}/ar/sales-orders/${id}/submit-for-approval`, { submittedBy });
+  approveSOWorkflow = (id: string) =>
+    this.http.post<any>(`${this.base}/ar/sales-orders/${id}/approve`, {});
+  rejectSOWorkflow = (id: string, reason: string) =>
+    this.http.post<any>(`${this.base}/ar/sales-orders/${id}/reject`, { reason });
+  confirmSODelivery = (id: string, req: any) =>
+    this.http.post<any>(`${this.base}/ar/sales-orders/${id}/confirm-delivery`, req);
+
+  // ── S2C: AR Invoice Workflow ─────────────────────────────────────────────
+  submitARInvoiceForApproval = (id: string, submittedBy: string) =>
+    this.http.post<any>(`${this.base}/ar/invoices/${id}/submit-for-approval`, { submittedBy });
+  approveARInvoice = (id: string) =>
+    this.http.post<any>(`${this.base}/ar/invoices/${id}/approve`, {});
+  rejectARInvoice = (id: string, reason?: string) =>
+    this.http.post<any>(`${this.base}/ar/invoices/${id}/reject`, { reason });
+
+  // ── S2C: Quotations ──────────────────────────────────────────────────────
+  getQuotations = (status?: string, customerId?: string) => {
+    let params = new HttpParams();
+    if (status) params = params.set('status', status);
+    if (customerId) params = params.set('customerId', customerId);
+    return this.http.get<any[]>(`${this.base}/ar/quotations`, { params });
+  };
+  getQuotation = (id: string) => this.http.get<any>(`${this.base}/ar/quotations/${id}`);
+  createQuotation = (r: any) => this.http.post<any>(`${this.base}/ar/quotations`, r);
+  addQuotationLine = (id: string, r: any) =>
+    this.http.post<any>(`${this.base}/ar/quotations/${id}/lines`, r);
+  removeQuotationLine = (id: string, lineId: string) =>
+    this.http.delete<void>(`${this.base}/ar/quotations/${id}/lines/${lineId}`);
+  submitQuotationForApproval = (id: string, submittedBy: string) =>
+    this.http.post<any>(`${this.base}/ar/quotations/${id}/submit-for-approval`, { submittedBy });
+  approveQuotation = (id: string) =>
+    this.http.post<any>(`${this.base}/ar/quotations/${id}/approve`, {});
+  rejectQuotation = (id: string, reason: string) =>
+    this.http.post<any>(`${this.base}/ar/quotations/${id}/reject`, { reason });
+  sendQuotation = (id: string) =>
+    this.http.post<any>(`${this.base}/ar/quotations/${id}/send`, {});
+  acceptQuotation = (id: string) =>
+    this.http.post<any>(`${this.base}/ar/quotations/${id}/accept`, {});
+  rejectQuotationByCustomer = (id: string, reason?: string) =>
+    this.http.post<any>(`${this.base}/ar/quotations/${id}/reject-by-customer`, { reason });
+  convertQuotationToSO = (id: string, req: any) =>
+    this.http.post<any>(`${this.base}/ar/quotations/${id}/convert-to-so`, req);
+  cancelQuotation = (id: string) =>
+    this.http.post<void>(`${this.base}/ar/quotations/${id}/cancel`, {});
+
+  // ── S2C: AR Credit Notes ─────────────────────────────────────────────────
+  getARCreditNotes = (customerId?: string) => {
+    let params = new HttpParams();
+    if (customerId) params = params.set('customerId', customerId);
+    return this.http.get<any[]>(`${this.base}/ar/credit-notes`, { params });
+  };
+  getARCreditNote = (id: string) => this.http.get<any>(`${this.base}/ar/credit-notes/${id}`);
+  createARCreditNote = (r: any) => this.http.post<any>(`${this.base}/ar/credit-notes`, r);
+  submitCreditNoteForApproval = (id: string, submittedBy: string) =>
+    this.http.post<any>(`${this.base}/ar/credit-notes/${id}/submit-for-approval`, { submittedBy });
+  approveCreditNote = (id: string) =>
+    this.http.post<any>(`${this.base}/ar/credit-notes/${id}/approve`, {});
+  rejectCreditNote = (id: string, reason?: string) =>
+    this.http.post<any>(`${this.base}/ar/credit-notes/${id}/reject`, { reason });
+  issueARCreditNote = (id: string) =>
+    this.http.post<any>(`${this.base}/ar/credit-notes/${id}/issue`, {});
+  applyARCreditNote = (id: string, req: any) =>
+    this.http.post<any>(`${this.base}/ar/credit-notes/${id}/apply`, req);
+  voidARCreditNote = (id: string) =>
+    this.http.post<any>(`${this.base}/ar/credit-notes/${id}/void`, {});
+
+  // ── S2C: Dunning ─────────────────────────────────────────────────────────
+  getDunningRecords = (customerId?: string) => {
+    let params = new HttpParams();
+    if (customerId) params = params.set('customerId', customerId);
+    return this.http.get<any[]>(`${this.base}/ar/dunning`, { params });
+  };
+  createDunningRecord = (r: any) => this.http.post<any>(`${this.base}/ar/dunning`, r);
+  resolveDunning = (id: string, notes?: string) =>
+    this.http.post<any>(`${this.base}/ar/dunning/${id}/resolve`, { notes });
+  escalateDunning = (id: string) =>
+    this.http.post<any>(`${this.base}/ar/dunning/${id}/escalate`, {});
 
   setPreferredVendor = (productId: string, vendorId: string | null) =>
     this.http.put<void>(`${this.base}/pm/products/${productId}/preferred-vendor`, { vendorId });
@@ -653,4 +747,97 @@ export class ApiService {
 
   cancelTransferOrder = (id: string) =>
     this.http.post<any>(`${this.base}/warehouse/transfer/${id}/cancel`, {});
+
+  // ── Purchase Requisitions ─────────────────────────────────────────────────
+
+  getRequisitions = (status?: string) => {
+    let params = new HttpParams();
+    if (status) params = params.set('status', status);
+    return this.http.get<any[]>(`${this.base}/ap/requisitions`, { params });
+  };
+
+  getRequisition = (id: string) =>
+    this.http.get<any>(`${this.base}/ap/requisitions/${id}`);
+
+  createRequisition = (req: any) =>
+    this.http.post<any>(`${this.base}/ap/requisitions`, req);
+
+  addPRLine = (prId: string, req: any) =>
+    this.http.post<any>(`${this.base}/ap/requisitions/${prId}/lines`, req);
+
+  removePRLine = (prId: string, lineId: string) =>
+    this.http.delete<void>(`${this.base}/ap/requisitions/${prId}/lines/${lineId}`);
+
+  submitRequisition = (id: string) =>
+    this.http.post<any>(`${this.base}/ap/requisitions/${id}/submit`, {});
+
+  approveRequisition = (id: string, approvedBy: string) =>
+    this.http.post<any>(`${this.base}/ap/requisitions/${id}/approve`, { submittedBy: approvedBy });
+
+  rejectRequisition = (id: string, reason: string) =>
+    this.http.post<any>(`${this.base}/ap/requisitions/${id}/reject`, { reason });
+
+  convertRequisitionToPO = (prId: string, req: any) =>
+    this.http.post<any>(`${this.base}/ap/requisitions/${prId}/convert-to-po`, req);
+
+  cancelRequisition = (id: string) =>
+    this.http.post<void>(`${this.base}/ap/requisitions/${id}/cancel`, {});
+
+  // ── PO Workflow ───────────────────────────────────────────────────────────
+
+  submitPOForApproval = (poId: string, submittedBy: string) =>
+    this.http.post<void>(`${this.base}/ap/purchase-orders/${poId}/submit-for-approval`, { submittedBy });
+
+  // ── Invoice Workflow ──────────────────────────────────────────────────────
+
+  submitInvoiceForApproval = (invoiceId: string, submittedBy: string) =>
+    this.http.post<void>(`${this.base}/ap/invoices/${invoiceId}/submit-for-approval`, { submittedBy });
+
+  // ── Payment Proposals ─────────────────────────────────────────────────────
+
+  getPaymentProposals = () =>
+    this.http.get<any[]>(`${this.base}/ap/payment-proposals`);
+
+  getPaymentProposal = (id: string) =>
+    this.http.get<any>(`${this.base}/ap/payment-proposals/${id}`);
+
+  createPaymentProposal = (req: any) =>
+    this.http.post<any>(`${this.base}/ap/payment-proposals`, req);
+
+  addProposalLine = (proposalId: string, invoiceId: string) =>
+    this.http.post<any>(`${this.base}/ap/payment-proposals/${proposalId}/lines/${invoiceId}`, {});
+
+  removeProposalLine = (proposalId: string, lineId: string) =>
+    this.http.delete<void>(`${this.base}/ap/payment-proposals/${proposalId}/lines/${lineId}`);
+
+  approvePaymentProposal = (id: string) =>
+    this.http.post<any>(`${this.base}/ap/payment-proposals/${id}/approve`, {});
+
+  processPaymentProposal = (id: string, req: { processedBy: string }) =>
+    this.http.post<any>(`${this.base}/ap/payment-proposals/${id}/process`, req);
+
+  cancelPaymentProposal = (id: string) =>
+    this.http.post<void>(`${this.base}/ap/payment-proposals/${id}/cancel`, {});
+
+  // ── Vendor Credit Notes (AP) ──────────────────────────────────────────────
+  getVendorCreditNotes = (vendorId?: string) => {
+    const url = vendorId
+      ? `${this.base}/ap/credit-notes?vendorId=${vendorId}`
+      : `${this.base}/ap/credit-notes`;
+    return this.http.get<any[]>(url);
+  };
+  getVendorCreditNote = (id: string) =>
+    this.http.get<any>(`${this.base}/ap/credit-notes/${id}`);
+  createVendorCreditNote = (r: any) =>
+    this.http.post<any>(`${this.base}/ap/credit-notes`, r);
+  submitVendorCNForApproval = (id: string) =>
+    this.http.post<any>(`${this.base}/ap/credit-notes/${id}/submit`, {});
+  approveVendorCreditNote = (id: string) =>
+    this.http.post<any>(`${this.base}/ap/credit-notes/${id}/approve`, {});
+  rejectVendorCreditNote = (id: string, reason?: string) =>
+    this.http.post<any>(`${this.base}/ap/credit-notes/${id}/reject`, { reason });
+  applyVendorCreditNote = (id: string, req: { apInvoiceId: string; amount: number }) =>
+    this.http.post<any>(`${this.base}/ap/credit-notes/${id}/apply`, req);
+  voidVendorCreditNote = (id: string) =>
+    this.http.post<void>(`${this.base}/ap/credit-notes/${id}/void`, {});
 }

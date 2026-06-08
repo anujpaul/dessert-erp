@@ -2,9 +2,9 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { FiscalYear, FiscalPeriod, Account, AccountType, JournalEntry, TrialBalanceLine } from '../../core/models/erp.models';
+import { FiscalYear, FiscalPeriod, Account, AccountType, JournalEntry, TrialBalanceLine, Currency } from '../../core/models/erp.models';
 
-type Tab = 'fiscal' | 'coa' | 'journal' | 'trial';
+type Tab = 'fiscal' | 'coa' | 'journal' | 'trial' | 'currencies';
 
 @Component({
   selector: 'app-general-ledger',
@@ -16,7 +16,7 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial';
   <div class="page-header">
     <div>
       <h1 class="page-title">📒 General Ledger</h1>
-      <p class="page-sub">Fiscal Calendar · Chart of Accounts · Journal Entries · Trial Balance</p>
+      <p class="page-sub">Fiscal Calendar · Chart of Accounts · Journal Entries · Trial Balance · Currencies</p>
     </div>
   </div>
 
@@ -356,6 +356,143 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial';
     </table>
     <div *ngIf="!trialBalance.length && tbPeriodId" class="empty mt">No posted entries in this period.</div>
   </div>
+
+  <!-- ── CURRENCIES ── -->
+  <div *ngIf="activeTab === 'currencies'" class="tab-content">
+    <div class="toolbar">
+      <input [(ngModel)]="currSearch" placeholder="Search currencies…" class="search-input" />
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.83rem;color:#64748b">
+        <input type="checkbox" [(ngModel)]="currActiveOnly" (change)="loadCurrencies()" /> Active only
+      </label>
+      <button class="btn-primary" (click)="showCreateCurr = !showCreateCurr">+ Add Currency</button>
+    </div>
+
+    <!-- Create Form -->
+    <div *ngIf="showCreateCurr" class="form-card">
+      <div class="form-title">Add Currency</div>
+      <div class="form-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+        <div class="form-field">
+          <label>ISO Code</label>
+          <input [(ngModel)]="currForm.code" placeholder="USD" maxlength="3" style="text-transform:uppercase" />
+        </div>
+        <div class="form-field">
+          <label>Name</label>
+          <input [(ngModel)]="currForm.name" placeholder="US Dollar" />
+        </div>
+        <div class="form-field">
+          <label>Symbol</label>
+          <input [(ngModel)]="currForm.symbol" placeholder="$" />
+        </div>
+        <div class="form-field">
+          <label>Decimal Places</label>
+          <input type="number" [(ngModel)]="currForm.decimalPlaces" min="0" max="4" />
+        </div>
+        <div class="form-field">
+          <label>Exchange Rate (vs base)</label>
+          <input type="number" [(ngModel)]="currForm.exchangeRate" min="0.0001" step="0.0001" />
+        </div>
+        <div class="form-field">
+          <label>Numeric Code (ISO)</label>
+          <input type="number" [(ngModel)]="currForm.numericCode" placeholder="840" />
+        </div>
+        <div class="form-field">
+          <label>Country / Region</label>
+          <input [(ngModel)]="currForm.country" placeholder="United States" />
+        </div>
+        <div class="form-field">
+          <label>Set as Base?</label>
+          <select [(ngModel)]="currForm.isBase">
+            <option [ngValue]="false">No</option>
+            <option [ngValue]="true">Yes — functional currency</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" (click)="createCurrency()">Save</button>
+        <button class="btn-ghost" (click)="showCreateCurr = false">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Currency Table -->
+    <div class="split" style="grid-template-columns:1fr 380px">
+      <!-- LEFT: list -->
+      <div>
+        <table class="data-table mt">
+          <thead>
+            <tr>
+              <th>Code</th><th>Symbol</th><th>Name</th><th>Country</th>
+              <th class="num">Exch. Rate</th><th>Dec</th><th>Numeric</th>
+              <th>Base</th><th>Status</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let c of filteredCurrencies" [class.active-row]="selectedCurr?.id === c.id" (click)="selectCurrency(c)" style="cursor:pointer">
+              <td><code>{{ c.code }}</code></td>
+              <td>{{ c.symbol }}</td>
+              <td>{{ c.name }}</td>
+              <td>{{ c.country ?? '—' }}</td>
+              <td class="num">{{ c.isBase ? '1.000000' : c.exchangeRate.toFixed(6) }}</td>
+              <td class="num">{{ c.decimalPlaces }}</td>
+              <td class="num">{{ c.numericCode ?? '—' }}</td>
+              <td>
+                <span *ngIf="c.isBase" style="font-size:.75rem;background:#fef9c3;color:#92400e;padding:.15rem .4rem;border-radius:4px;font-weight:600">BASE</span>
+              </td>
+              <td>
+                <span class="badge" [class]="c.isActive ? 'badge-active' : 'badge-inactive'">{{ c.isActive ? 'Active' : 'Inactive' }}</span>
+              </td>
+              <td style="white-space:nowrap">
+                <button class="btn-xs" (click)="$event.stopPropagation(); activateCurrency(c)" *ngIf="!c.isActive" title="Activate">✓</button>
+                <button class="btn-xs btn-danger-xs" (click)="$event.stopPropagation(); deactivateCurrency(c)" *ngIf="c.isActive && !c.isBase" title="Deactivate">✕</button>
+                <button class="btn-xs" (click)="$event.stopPropagation(); startSetBase(c)" *ngIf="!c.isBase" title="Set as base">⭐</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div *ngIf="!filteredCurrencies.length" class="empty mt">No currencies found.</div>
+      </div>
+
+      <!-- RIGHT: detail / edit panel -->
+      <div class="detail-panel" *ngIf="selectedCurr" style="height:fit-content">
+        <div class="detail-header">
+          <div class="detail-title">{{ selectedCurr.code }} — {{ selectedCurr.name }}</div>
+          <span *ngIf="selectedCurr.isBase" style="font-size:.75rem;background:#fef9c3;color:#92400e;padding:.2rem .5rem;border-radius:4px;font-weight:600">BASE</span>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-item"><span class="info-label">Symbol</span><span>{{ selectedCurr.symbol }}</span></div>
+          <div class="info-item"><span class="info-label">Decimal Places</span><span>{{ selectedCurr.decimalPlaces }}</span></div>
+          <div class="info-item"><span class="info-label">Exchange Rate</span><span>{{ selectedCurr.isBase ? '1.000000' : selectedCurr.exchangeRate.toFixed(6) }}</span></div>
+          <div class="info-item"><span class="info-label">Rate Updated</span><span>{{ selectedCurr.rateUpdatedAt ? (selectedCurr.rateUpdatedAt | date:'mediumDate') : 'Seed default' }}</span></div>
+          <div class="info-item"><span class="info-label">Numeric Code</span><span>{{ selectedCurr.numericCode ?? '—' }}</span></div>
+          <div class="info-item"><span class="info-label">Country</span><span>{{ selectedCurr.country ?? '—' }}</span></div>
+        </div>
+
+        <!-- Update Exchange Rate -->
+        <div *ngIf="!selectedCurr.isBase" class="sub-section-title" style="margin-top:1rem">Update Exchange Rate</div>
+        <div *ngIf="!selectedCurr.isBase" style="display:flex;gap:.5rem;align-items:flex-end">
+          <div class="form-field" style="flex:1">
+            <label>New Rate (1 {{ baseCurrency?.code ?? 'BASE' }} = ? {{ selectedCurr.code }})</label>
+            <input type="number" [(ngModel)]="newRate" min="0.000001" step="0.0001" placeholder="1.0800" />
+          </div>
+          <button class="btn-primary btn-sm" (click)="updateExchangeRate()">Update</button>
+        </div>
+
+        <!-- Edit Details -->
+        <div class="sub-section-title" style="margin-top:1rem">Edit Details</div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr">
+          <div class="form-field"><label>Name</label><input [(ngModel)]="editCurrForm.name" /></div>
+          <div class="form-field"><label>Symbol</label><input [(ngModel)]="editCurrForm.symbol" /></div>
+          <div class="form-field"><label>Decimal Places</label><input type="number" [(ngModel)]="editCurrForm.decimalPlaces" min="0" max="4" /></div>
+          <div class="form-field"><label>Numeric Code</label><input type="number" [(ngModel)]="editCurrForm.numericCode" /></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Country / Region</label><input [(ngModel)]="editCurrForm.country" /></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary btn-sm" (click)="updateCurrency()">Save Changes</button>
+        </div>
+      </div>
+      <div class="detail-panel empty-detail" *ngIf="!selectedCurr">Select a currency to view or edit.</div>
+    </div>
+  </div>
 </div>
   `,
   styles: [`
@@ -441,6 +578,7 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial';
 
     .empty { padding: 2rem; text-align: center; color: #94a3b8; font-size: .875rem; }
     code { font-family: monospace; background: #f1f5f9; padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
+    .active-row td { background: #eff6ff !important; }
   `]
 })
 export class GeneralLedgerComponent implements OnInit {
@@ -450,6 +588,7 @@ export class GeneralLedgerComponent implements OnInit {
     { id: 'coa' as Tab, label: 'Chart of Accounts', icon: '📊' },
     { id: 'journal' as Tab, label: 'Journal Entries', icon: '📝' },
     { id: 'trial' as Tab, label: 'Trial Balance', icon: '⚖️' },
+    { id: 'currencies' as Tab, label: 'Currencies', icon: '💱' },
   ];
 
   // Fiscal
@@ -489,6 +628,26 @@ export class GeneralLedgerComponent implements OnInit {
   get tbTotalBalance() { return this.trialBalance.reduce((s, t) => s + t.balance, 0); }
   get jeDebitTotal() { return this.jeForm.lines.reduce((s, l) => s + (+l.debit || 0), 0); }
   get jeCreditTotal() { return this.jeForm.lines.reduce((s, l) => s + (+l.credit || 0), 0); }
+
+  // Currencies
+  currencies: Currency[] = [];
+  selectedCurr: Currency | null = null;
+  baseCurrency: Currency | null = null;
+  currSearch = '';
+  currActiveOnly = false;
+  showCreateCurr = false;
+  currForm: any = { code: '', name: '', symbol: '', decimalPlaces: 2, exchangeRate: 1, isBase: false, numericCode: null, country: '' };
+  editCurrForm: any = { name: '', symbol: '', decimalPlaces: 2, numericCode: null, country: '' };
+  newRate = 1;
+  get filteredCurrencies() {
+    let list = this.currencies;
+    if (this.currSearch) {
+      const q = this.currSearch.toLowerCase();
+      list = list.filter(c => c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || (c.country ?? '').toLowerCase().includes(q));
+    }
+    return list;
+  }
+
   get filteredAccounts() {
     if (!this.coaSearch) return this.accounts;
     const q = this.coaSearch.toLowerCase();
@@ -506,7 +665,10 @@ export class GeneralLedgerComponent implements OnInit {
     this.loadJournalEntries();
   }
 
-  setTab(t: Tab) { this.activeTab = t; }
+  setTab(t: Tab) {
+    this.activeTab = t;
+    if (t === 'currencies' && !this.currencies.length) this.loadCurrencies();
+  }
 
   selectFY(fy: FiscalYear) {
     this.selectedFY = fy;
@@ -661,5 +823,96 @@ export class GeneralLedgerComponent implements OnInit {
   loadTrialBalance() {
     if (!this.tbPeriodId) return;
     this.api.getTrialBalance(this.tbPeriodId).subscribe(d => this.trialBalance = d);
+  }
+
+  // ── Currency methods ──────────────────────────────────────────────────────
+
+  loadCurrencies() {
+    this.api.getCurrencies(this.currActiveOnly).subscribe({
+      next: (d: Currency[]) => {
+        this.currencies = d;
+        this.baseCurrency = d.find((c: Currency) => c.isBase) ?? null;
+      },
+      error: () => {}
+    });
+  }
+
+  selectCurrency(c: Currency) {
+    this.selectedCurr = c;
+    this.newRate = c.exchangeRate;
+    this.editCurrForm = {
+      name: c.name,
+      symbol: c.symbol,
+      decimalPlaces: c.decimalPlaces,
+      numericCode: c.numericCode ?? null,
+      country: c.country ?? ''
+    };
+  }
+
+  createCurrency() {
+    this.api.createCurrency(this.currForm).subscribe({
+      next: (d: Currency) => {
+        this.currencies = [...this.currencies, d];
+        if (d.isBase) this.baseCurrency = d;
+        this.showCreateCurr = false;
+        this.currForm = { code: '', name: '', symbol: '', decimalPlaces: 2, exchangeRate: 1, isBase: false, numericCode: null, country: '' };
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to create currency.')
+    });
+  }
+
+  updateCurrency() {
+    if (!this.selectedCurr) return;
+    this.api.updateCurrency(this.selectedCurr.id, this.editCurrForm).subscribe({
+      next: (d: Currency) => {
+        this.currencies = this.currencies.map(c => c.id === d.id ? d : c);
+        this.selectedCurr = d;
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to update currency.')
+    });
+  }
+
+  updateExchangeRate() {
+    if (!this.selectedCurr) return;
+    this.api.updateCurrencyExchangeRate(this.selectedCurr.id, { exchangeRate: this.newRate }).subscribe({
+      next: (d: Currency) => {
+        this.currencies = this.currencies.map(c => c.id === d.id ? d : c);
+        this.selectedCurr = d;
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to update rate.')
+    });
+  }
+
+  startSetBase(c: Currency) {
+    if (!confirm('Set ' + c.code + ' as the base (functional) currency? This will change all exchange rate calculations.')) return;
+    this.api.setBaseCurrency(c.id).subscribe({
+      next: (d: Currency) => {
+        this.loadCurrencies();
+        this.selectedCurr = d;
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to set base currency.')
+    });
+  }
+
+  activateCurrency(c: Currency) {
+    this.api.activateCurrency(c.id).subscribe({
+      next: () => {
+        const updated = { ...c, isActive: true };
+        this.currencies = this.currencies.map(x => x.id === c.id ? updated : x);
+        if (this.selectedCurr?.id === c.id) this.selectedCurr = updated;
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to activate.')
+    });
+  }
+
+  deactivateCurrency(c: Currency) {
+    this.api.deactivateCurrency(c.id).subscribe({
+      next: () => {
+        const updated = { ...c, isActive: false };
+        this.currencies = this.currencies.map(x => x.id === c.id ? updated : x);
+        if (this.selectedCurr?.id === c.id) this.selectedCurr = updated;
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to deactivate.')
+    });
   }
 }
