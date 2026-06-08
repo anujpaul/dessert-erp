@@ -286,7 +286,8 @@ export class AppComponent {
       ] },
     { label: 'Inventory', icon: '📦',
       items: [
-        { label: 'Inventory Management', route: '/inventory-management', icon: '🗃️' }
+        { label: 'Inventory Management', route: '/inventory-management',  icon: '🗃️' },
+        { label: 'Warehouse Management', route: '/warehouse-management',  icon: '🏭' }
       ] },
     { label: 'Approvals & Expenses', icon: '✅',
       items: [

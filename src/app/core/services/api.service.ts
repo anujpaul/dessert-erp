@@ -540,4 +540,117 @@ export class ApiService {
 
   markExpensePaid = (id: string, req: { amount: number }) =>
     this.http.post<any>(`${this.base}/expenses/reports/${id}/mark-paid`, req);
+
+  // ── Warehouse Management ─────────────────────────────────────────────────
+
+  getWarehouses = (organizationId: string) =>
+    this.http.get<any[]>(`${this.base}/warehouse?organizationId=${organizationId}`);
+
+  getWarehouse = (id: string) =>
+    this.http.get<any>(`${this.base}/warehouse/${id}`);
+
+  createWarehouse = (body: any) =>
+    this.http.post<any>(`${this.base}/warehouse`, body);
+
+  updateWarehouse = (id: string, body: any) =>
+    this.http.put<any>(`${this.base}/warehouse/${id}`, body);
+
+  activateWarehouse = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/${id}/activate`, {});
+
+  deactivateWarehouse = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/${id}/deactivate`, {});
+
+  getWarehouseLocations = (warehouseId: string) =>
+    this.http.get<any[]>(`${this.base}/warehouse/${warehouseId}/locations`);
+
+  createWarehouseLocation = (body: any) =>
+    this.http.post<any>(`${this.base}/warehouse/locations`, body);
+
+  activateWarehouseLocation = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/locations/${id}/activate`, {});
+
+  deactivateWarehouseLocation = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/locations/${id}/deactivate`, {});
+
+  // Inbound Orders
+  getInboundOrders = (organizationId: string) =>
+    this.http.get<any[]>(`${this.base}/warehouse/inbound?organizationId=${organizationId}`);
+
+  getInboundOrder = (id: string) =>
+    this.http.get<any>(`${this.base}/warehouse/inbound/${id}`);
+
+  createInboundOrder = (body: any) =>
+    this.http.post<any>(`${this.base}/warehouse/inbound`, body);
+
+  confirmInboundOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/inbound/${id}/confirm`, {});
+
+  inboundInTransit = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/inbound/${id}/in-transit`, {});
+
+  startReceivingInbound = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/inbound/${id}/start-receiving`, {});
+
+  receiveInboundLines = (id: string, lines: any[]) =>
+    this.http.post<any>(`${this.base}/warehouse/inbound/${id}/receive-lines`, lines);
+
+  completeInboundOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/inbound/${id}/complete`, {});
+
+  cancelInboundOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/inbound/${id}/cancel`, {});
+
+  // Outbound Orders
+  getOutboundOrders = (organizationId: string) =>
+    this.http.get<any[]>(`${this.base}/warehouse/outbound?organizationId=${organizationId}`);
+
+  getOutboundOrder = (id: string) =>
+    this.http.get<any>(`${this.base}/warehouse/outbound/${id}`);
+
+  createOutboundOrder = (body: any) =>
+    this.http.post<any>(`${this.base}/warehouse/outbound`, body);
+
+  confirmOutboundOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/outbound/${id}/confirm`, {});
+
+  startPickingOutbound = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/outbound/${id}/start-picking`, {});
+
+  packOutboundOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/outbound/${id}/pack`, {});
+
+  shipOutboundOrder = (id: string, body: any) =>
+    this.http.post<any>(`${this.base}/warehouse/outbound/${id}/ship`, body);
+
+  deliverOutboundOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/outbound/${id}/deliver`, {});
+
+  cancelOutboundOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/outbound/${id}/cancel`, {});
+
+  // Transfer Orders
+  getTransferOrders = (organizationId: string) =>
+    this.http.get<any[]>(`${this.base}/warehouse/transfer?organizationId=${organizationId}`);
+
+  getTransferOrder = (id: string) =>
+    this.http.get<any>(`${this.base}/warehouse/transfer/${id}`);
+
+  createTransferOrder = (body: any) =>
+    this.http.post<any>(`${this.base}/warehouse/transfer`, body);
+
+  confirmTransferOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/transfer/${id}/confirm`, {});
+
+  shipTransferOrder = (id: string, shippedDate: string) =>
+    this.http.post<any>(`${this.base}/warehouse/transfer/${id}/ship`, JSON.stringify(shippedDate), { headers: { 'Content-Type': 'application/json' } });
+
+  startReceivingTransfer = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/transfer/${id}/start-receiving`, {});
+
+  completeTransferOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/transfer/${id}/complete`, {});
+
+  cancelTransferOrder = (id: string) =>
+    this.http.post<any>(`${this.base}/warehouse/transfer/${id}/cancel`, {});
 }
