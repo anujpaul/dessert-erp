@@ -293,6 +293,14 @@ export class AppComponent {
       items: [
         { label: 'Approval Inbox',     route: '/approval-inbox',     icon: '📥' },
         { label: 'Expense Management', route: '/expense-management', icon: '💳' }
+      ] },
+    { label: 'Cash & Bank', icon: '🏦',
+      items: [
+        { label: 'Cash & Bank Management', route: '/cash-bank', icon: '💰' }
+      ] },
+    { label: 'Fixed Assets', icon: '📦',
+      items: [
+        { label: 'Fixed Assets', route: '/fixed-assets', icon: '🏭' }
       ] }
   ];
 

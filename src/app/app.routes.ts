@@ -82,5 +82,15 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./modules/warehouse-management/warehouse-management.component').then(m => m.WarehouseManagementComponent)
   },
+  {
+    path: 'cash-bank',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/cash-bank/cash-bank.component').then(m => m.CashBankComponent)
+  },
+  {
+    path: 'fixed-assets',
+    canActivate: [authGuard],
+    loadComponent: () => import('./modules/fixed-assets/fixed-assets.component').then(m => m.FixedAssetsComponent)
+  },
   { path: '**', redirectTo: 'dashboard' }
 ];

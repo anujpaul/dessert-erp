@@ -840,4 +840,118 @@ export class ApiService {
     this.http.post<any>(`${this.base}/ap/credit-notes/${id}/apply`, req);
   voidVendorCreditNote = (id: string) =>
     this.http.post<void>(`${this.base}/ap/credit-notes/${id}/void`, {});
+  // ── Cash & Bank Management ─────────────────────────────────────────────────
+  // Bank Accounts
+  getBankAccounts = (activeOnly = false) =>
+    this.http.get<any[]>(`${this.base}/cash-bank/accounts?activeOnly=${activeOnly}`);
+  getBankAccount = (id: string) =>
+    this.http.get<any>(`${this.base}/cash-bank/accounts/${id}`);
+  createBankAccount = (r: any) =>
+    this.http.post<any>(`${this.base}/cash-bank/accounts`, r);
+  updateBankAccount = (id: string, r: any) =>
+    this.http.put<any>(`${this.base}/cash-bank/accounts/${id}`, r);
+  activateBankAccount = (id: string) =>
+    this.http.post<void>(`${this.base}/cash-bank/accounts/${id}/activate`, {});
+  deactivateBankAccount = (id: string) =>
+    this.http.post<void>(`${this.base}/cash-bank/accounts/${id}/deactivate`, {});
+
+  // Bank Transactions
+  getBankTransactions = (bankAccountId?: string, status?: string) => {
+    const params = new URLSearchParams();
+    if (bankAccountId) params.set('bankAccountId', bankAccountId);
+    if (status) params.set('status', status);
+    return this.http.get<any[]>(`${this.base}/cash-bank/transactions?${params}`);
+  };
+  getBankTransaction = (id: string) =>
+    this.http.get<any>(`${this.base}/cash-bank/transactions/${id}`);
+  createBankTransaction = (r: any) =>
+    this.http.post<any>(`${this.base}/cash-bank/transactions`, r);
+  postBankTransaction = (id: string, r: { postedBy: string }) =>
+    this.http.post<any>(`${this.base}/cash-bank/transactions/${id}/post`, r);
+  voidBankTransaction = (id: string) =>
+    this.http.post<void>(`${this.base}/cash-bank/transactions/${id}/void`, {});
+
+  // Reconciliations
+  getReconciliations = (bankAccountId?: string) => {
+    const url = bankAccountId
+      ? `${this.base}/cash-bank/reconciliations?bankAccountId=${bankAccountId}`
+      : `${this.base}/cash-bank/reconciliations`;
+    return this.http.get<any[]>(url);
+  };
+  getReconciliation = (id: string) =>
+    this.http.get<any>(`${this.base}/cash-bank/reconciliations/${id}`);
+  createReconciliation = (r: any) =>
+    this.http.post<any>(`${this.base}/cash-bank/reconciliations`, r);
+  reconcileTransaction = (id: string, r: { transactionId: string; isReconciled: boolean }) =>
+    this.http.post<any>(`${this.base}/cash-bank/reconciliations/${id}/reconcile-transaction`, r);
+  completeReconciliation = (id: string, r: { completedBy: string }) =>
+    this.http.post<any>(`${this.base}/cash-bank/reconciliations/${id}/complete`, r);
+  cancelReconciliation = (id: string) =>
+    this.http.post<void>(`${this.base}/cash-bank/reconciliations/${id}/cancel`, {});
+
+  // Cash Journals
+  getCashJournals = (bankAccountId?: string, status?: string) => {
+    const params = new URLSearchParams();
+    if (bankAccountId) params.set('bankAccountId', bankAccountId);
+    if (status) params.set('status', status);
+    return this.http.get<any[]>(`${this.base}/cash-bank/journals?${params}`);
+  };
+  getCashJournal = (id: string) =>
+    this.http.get<any>(`${this.base}/cash-bank/journals/${id}`);
+  createCashJournal = (r: any) =>
+    this.http.post<any>(`${this.base}/cash-bank/journals`, r);
+  addCashJournalLine = (id: string, r: any) =>
+    this.http.post<any>(`${this.base}/cash-bank/journals/${id}/lines`, r);
+  removeCashJournalLine = (id: string, lineId: string) =>
+    this.http.delete<void>(`${this.base}/cash-bank/journals/${id}/lines/${lineId}`);
+  postCashJournal = (id: string, r: { postedBy: string }) =>
+    this.http.post<any>(`${this.base}/cash-bank/journals/${id}/post`, r);
+  voidCashJournal = (id: string) =>
+    this.http.post<void>(`${this.base}/cash-bank/journals/${id}/void`, {});
+
+
+  // ── Fixed Assets ─────────────────────────────────────────────────────────
+  getFixedAssets = (category?: string, status?: string) => {
+    let params = '';
+    const p: string[] = [];
+    if (category) p.push('category=' + category);
+    if (status) p.push('status=' + status);
+    if (p.length) params = '?' + p.join('&');
+    return this.http.get<any[]>(`${this.base}/fixed-assets${params}`);
+  };
+  getFixedAsset = (id: string) =>
+    this.http.get<any>(`${this.base}/fixed-assets/${id}`);
+  createFixedAsset = (r: any) =>
+    this.http.post<any>(`${this.base}/fixed-assets`, r);
+  updateFixedAsset = (id: string, r: any) =>
+    this.http.put<any>(`${this.base}/fixed-assets/${id}`, r);
+  setFixedAssetStatus = (id: string, status: string) =>
+    this.http.post<void>(`${this.base}/fixed-assets/${id}/status`, { status });
+  getFixedAssetStats = () =>
+    this.http.get<any>(`${this.base}/fixed-assets/stats`);
+  runDepreciation = (id: string, r: any) =>
+    this.http.post<any>(`${this.base}/fixed-assets/${id}/depreciate`, r);
+  runBulkDepreciation = (r: any) =>
+    this.http.post<any>(`${this.base}/fixed-assets/depreciate/bulk`, r);
+  getDepreciationSchedule = (id: string) =>
+    this.http.get<any[]>(`${this.base}/fixed-assets/${id}/depreciation-schedule`);
+  getDepreciationHistory = (id: string) =>
+    this.http.get<any[]>(`${this.base}/fixed-assets/${id}/depreciation-history`);
+  disposeAsset = (id: string, r: any) =>
+    this.http.post<any>(`${this.base}/fixed-assets/${id}/dispose`, r);
+  getAssetDisposals = () =>
+    this.http.get<any[]>(`${this.base}/fixed-assets/disposals`);
+  createAssetTransfer = (r: any) =>
+    this.http.post<any>(`${this.base}/fixed-assets/transfers`, r);
+  getAssetTransfers = (assetId?: string) => {
+    const params = assetId ? '?assetId=' + assetId : '';
+    return this.http.get<any[]>(`${this.base}/fixed-assets/transfers${params}`);
+  };
+  addAssetMaintenance = (r: any) =>
+    this.http.post<any>(`${this.base}/fixed-assets/maintenance`, r);
+  getAssetMaintenance = (id: string) =>
+    this.http.get<any[]>(`${this.base}/fixed-assets/${id}/maintenance`);
+  impairAsset = (id: string, r: any) =>
+    this.http.post<any>(`${this.base}/fixed-assets/${id}/impair`, r);
+
 }

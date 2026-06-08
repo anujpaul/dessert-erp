@@ -1,15 +1,16 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, effect } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
-import { forkJoin } from 'rxjs';
+import { OrgService } from '../../core/services/org.service';
+import { forkJoin, Subscription } from 'rxjs';
 
 interface KpiCard { label: string; value: string; sub: string; icon: string; color: string; route: string; }
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, CurrencyPipe],
+  imports: [CommonModule, CurrencyPipe, RouterLink],
   template: `
 <div class="page">
   <!-- Header -->
@@ -18,6 +19,7 @@ interface KpiCard { label: string; value: string; sub: string; icon: string; col
       <h1 class="page-title">Dashboard</h1>
       <p class="page-sub">{{ today | date:'EEEE, MMMM d, y' }} &nbsp;·&nbsp; Dessert ERP v2.0</p>
     </div>
+    <div *ngIf="activeOrgName" class="org-pill">🏢 {{ activeOrgName }}</div>
   </div>
 
   <!-- KPI Row -->
@@ -25,7 +27,7 @@ interface KpiCard { label: string; value: string; sub: string; icon: string; col
     <div *ngFor="let k of kpis" class="kpi-card" [routerLink]="k.route">
       <div class="kpi-icon" [style.background]="k.color + '22'" [style.color]="k.color">{{ k.icon }}</div>
       <div class="kpi-body">
-        <div class="kpi-value">{{ k.value }}</div>
+        <div class="kpi-value">{{ loading ? '…' : k.value }}</div>
         <div class="kpi-label">{{ k.label }}</div>
         <div class="kpi-sub">{{ k.sub }}</div>
       </div>
@@ -67,9 +69,10 @@ interface KpiCard { label: string; value: string; sub: string; icon: string; col
   `,
   styles: [`
     .page { padding: 2rem; max-width: 1200px; }
-    .page-header { margin-bottom: 2rem; }
+    .page-header { margin-bottom: 2rem; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: .75rem; }
     .page-title { font-size: 1.6rem; font-weight: 700; color: #0f172a; }
     .page-sub { color: #64748b; font-size: .875rem; margin-top: .25rem; }
+    .org-pill { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: .35rem .85rem; border-radius: 20px; font-size: .8rem; font-weight: 600; align-self: center; }
 
     .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 2.5rem; }
     .kpi-card {
@@ -110,28 +113,50 @@ interface KpiCard { label: string; value: string; sub: string; icon: string; col
     @keyframes slide { 0% { transform: scaleX(0); transform-origin: left; } 50% { transform: scaleX(1); transform-origin: left; } 51% { transform-origin: right; } 100% { transform: scaleX(0); transform-origin: right; } }
   `]
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnDestroy {
   today = new Date();
   loading = true;
+  activeOrgName = '';
+
   kpis: KpiCard[] = [
-    { label: 'AR Outstanding', value: '—', sub: 'Unpaid invoices', icon: '💰', color: '#10b981', route: '/accounts-receivable' },
+    { label: 'AR Outstanding',    value: '—', sub: 'Unpaid invoices',            icon: '💰', color: '#10b981', route: '/accounts-receivable' },
     { label: 'Open Sales Orders', value: '—', sub: 'Draft + Confirmed + Picking', icon: '🛒', color: '#3b82f6', route: '/accounts-receivable' },
-    { label: 'AP Due', value: '—', sub: 'Unpaid vendor invoices', icon: '🧾', color: '#f59e0b', route: '/accounts-payable' },
-    { label: 'Open Purchase Orders', value: '—', sub: 'Draft + Sent + Receiving', icon: '📦', color: '#8b5cf6', route: '/accounts-payable' },
-    { label: 'Customers', value: '—', sub: 'Active accounts', icon: '👥', color: '#06b6d4', route: '/accounts-receivable' },
-    { label: 'Vendors', value: '—', sub: 'Active suppliers', icon: '🏭', color: '#ec4899', route: '/accounts-payable' },
+    { label: 'AP Due',            value: '—', sub: 'Unpaid vendor invoices',      icon: '🧾', color: '#f59e0b', route: '/accounts-payable'   },
+    { label: 'Open POs',          value: '—', sub: 'Draft + Sent + Receiving',    icon: '📦', color: '#8b5cf6', route: '/accounts-payable'   },
+    { label: 'Customers',         value: '—', sub: 'Active accounts',             icon: '👥', color: '#06b6d4', route: '/accounts-receivable' },
+    { label: 'Vendors',           value: '—', sub: 'Active suppliers',            icon: '🏭', color: '#ec4899', route: '/accounts-payable'   },
   ];
 
-  constructor(private api: ApiService) {}
+  private kpiSub: Subscription | null = null;
 
-  ngOnInit() {
-    forkJoin({
-      arInvoices: this.api.getARInvoices(),
-      salesOrders: this.api.getSalesOrders(),
-      apInvoices: this.api.getAPInvoices(),
+  constructor(private api: ApiService, private orgService: OrgService) {
+    // effect() runs immediately and re-runs whenever orgService.activeId() changes.
+    // Each org switch cancels any in-flight request and fires fresh API calls.
+    effect(() => {
+      const orgId = this.orgService.activeId();          // <-- signal read: tracks changes
+      this.activeOrgName = this.orgService.activeOrg()?.name ?? '';
+      this.loadKpis();                                   // reload data for new org
+    });
+  }
+
+  ngOnDestroy() {
+    this.kpiSub?.unsubscribe();
+  }
+
+  private loadKpis() {
+    // Cancel any previous in-flight batch
+    this.kpiSub?.unsubscribe();
+    this.loading = true;
+    // Reset values while loading
+    this.kpis.forEach(k => k.value = '—');
+
+    this.kpiSub = forkJoin({
+      arInvoices:    this.api.getARInvoices(),
+      salesOrders:   this.api.getSalesOrders(),
+      apInvoices:    this.api.getAPInvoices(),
       purchaseOrders: this.api.getPurchaseOrders(),
-      customers: this.api.getCustomers(),
-      vendors: this.api.getVendors(),
+      customers:     this.api.getCustomers(),
+      vendors:       this.api.getVendors(),
     }).subscribe({
       next: (data) => {
         const arOutstanding = data.arInvoices
@@ -152,8 +177,8 @@ export class DashboardComponent implements OnInit {
         this.kpis[1].value = openSO.toString();
         this.kpis[2].value = '$' + apDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         this.kpis[3].value = openPO.toString();
-        this.kpis[4].value = data.customers.filter(c => c.status === 'Active').length.toString();
-        this.kpis[5].value = data.vendors.filter(v => v.status === 'Active').length.toString();
+        this.kpis[4].value = data.customers.filter((c: any) => c.status === 'Active').length.toString();
+        this.kpis[5].value = data.vendors.filter((v: any) => v.status === 'Active').length.toString();
         this.loading = false;
       },
       error: () => { this.loading = false; }
