@@ -213,6 +213,53 @@ import { ApiService } from '../../core/services/api.service';
         <span>Last Count: <strong>{{ selectedItem.lastCountDate ? (selectedItem.lastCountDate | date:'mediumDate') : '—' }}</strong></span>
       </div>
 
+      <div class="allocation-section">
+        <div class="section-label">Warehouse Allocation</div>
+        <div class="allocation-summary">
+          Allocated <strong>{{ (warehouseAllocation?.allocatedOnHand || 0) | number:'1.0-2' }}</strong>
+          of <strong>{{ (warehouseAllocation?.totalOnHand || 0) | number:'1.0-2' }}</strong>
+          <span class="unallocated">{{ (warehouseAllocation?.unallocatedOnHand || 0) | number:'1.0-2' }} unallocated</span>
+        </div>
+
+        <div class="allocation-editor">
+          <select [(ngModel)]="allocationForm.warehouseId" (change)="onAllocationWarehouseChange()">
+            <option value="">Select warehouse</option>
+            <option *ngFor="let warehouse of warehouses" [value]="warehouse.id">
+              {{ warehouse.code }} — {{ warehouse.name }}
+            </option>
+          </select>
+          <select [(ngModel)]="allocationForm.warehouseLocationId" [disabled]="!allocationForm.warehouseId">
+            <option value="">Select location</option>
+            <option *ngFor="let location of allocationLocations" [value]="location.id">{{ location.code }}</option>
+          </select>
+          <input type="number" min="0" step="1" [(ngModel)]="allocationForm.quantityOnHand" placeholder="Quantity" />
+          <button class="btn-primary" (click)="saveWarehouseAllocation()"
+                  [disabled]="savingAllocation || !allocationForm.warehouseLocationId">
+            {{ savingAllocation ? 'Saving…' : 'Save allocation' }}
+          </button>
+        </div>
+        <div class="allocation-error" *ngIf="allocationError">{{ allocationError }}</div>
+
+        <table class="txn-table" *ngIf="warehouseAllocation?.balances?.length">
+          <thead>
+            <tr><th>Warehouse</th><th>Location</th><th>On Hand</th><th>Reserved</th><th>Available</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let balance of warehouseAllocation.balances">
+              <td>{{ balance.warehouseCode }} — {{ balance.warehouseName }}</td>
+              <td>{{ balance.locationCode }}</td>
+              <td>{{ balance.onHand | number:'1.0-2' }}</td>
+              <td>{{ balance.reserved | number:'1.0-2' }}</td>
+              <td>{{ balance.available | number:'1.0-2' }}</td>
+              <td><button class="btn-ghost btn-sm" (click)="editWarehouseAllocation(balance)">Edit</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="empty-row" *ngIf="warehouseAllocation && warehouseAllocation.balances.length === 0">
+          No stock has been assigned to a warehouse location yet.
+        </div>
+      </div>
+
       <!-- Transaction history for this SKU -->
       <div class="txn-section">
         <div class="section-label">Transaction History</div>
@@ -545,6 +592,13 @@ import { ApiService } from '../../core/services/api.service';
 
     .detail-meta { display: flex; gap: 24px; padding: 12px 20px; font-size: 13px; color: var(--text-secondary, #6b7280); border-bottom: 1px solid var(--border-light, #f3f4f6); flex-wrap: wrap; }
     .detail-meta span strong { color: var(--text-primary, #111); }
+    .allocation-section { padding: 16px 20px; border-bottom: 1px solid var(--border-light, #f3f4f6); }
+    .allocation-summary { font-size: 13px; color: var(--text-secondary, #6b7280); margin-bottom: 12px; }
+    .allocation-summary .unallocated { margin-left: 12px; color: #b45309; font-weight: 600; }
+    .allocation-editor { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(150px, 1fr) 120px auto; gap: 8px; margin-bottom: 12px; }
+    .allocation-editor select, .allocation-editor input { min-width: 0; padding: 8px 10px; border: 1px solid var(--border, #e5e7eb); border-radius: 6px; background: #fff; }
+    .allocation-error { color: #b91c1c; font-size: 13px; margin: 4px 0 10px; }
+    @media (max-width: 800px) { .allocation-editor { grid-template-columns: 1fr; } }
 
     .txn-section { padding: 16px 20px; }
     .section-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--text-secondary, #6b7280); margin-bottom: 12px; }
@@ -607,6 +661,12 @@ export class InventoryManagementComponent implements OnInit {
   selectedItem: any = null;
   itemTransactions: any[] = [];
   txnsLoading = false;
+  warehouses: any[] = [];
+  allocationLocations: any[] = [];
+  warehouseAllocation: any = null;
+  allocationForm = { warehouseId: '', warehouseLocationId: '', quantityOnHand: 0 };
+  savingAllocation = false;
+  allocationError = '';
 
   // Adjust modal
   showAdjustModal = false;
@@ -627,6 +687,10 @@ export class InventoryManagementComponent implements OnInit {
   loadAll() {
     this.api.getInventorySummary().subscribe(s => this.summary = s);
     this.api.getInventoryFilterOptions().subscribe(o => this.filterOptions = o);
+    this.api.getWarehouses().subscribe({
+      next: rows => this.warehouses = rows.filter((warehouse: any) => warehouse.isActive),
+      error: () => this.warehouses = []
+    });
     this.loadItems();
   }
 
@@ -678,10 +742,60 @@ export class InventoryManagementComponent implements OnInit {
   selectItem(item: any) {
     this.selectedItem = item;
     this.itemTransactions = [];
+    this.warehouseAllocation = null;
+    this.allocationError = '';
     this.txnsLoading = true;
     this.api.getInventoryTransactions(item.productVariantId, 50)
       .subscribe({ next: d => { this.itemTransactions = d; this.txnsLoading = false; },
                    error: () => { this.txnsLoading = false; } });
+    this.loadWarehouseAllocation();
+  }
+
+  loadWarehouseAllocation() {
+    if (!this.selectedItem) return;
+    this.api.getWarehouseInventoryBalances(this.selectedItem.id).subscribe({
+      next: data => this.warehouseAllocation = data,
+      error: e => this.allocationError = e.error?.error || 'Could not load warehouse allocations.'
+    });
+  }
+
+  onAllocationWarehouseChange() {
+    this.allocationForm.warehouseLocationId = '';
+    this.allocationLocations = [];
+    if (!this.allocationForm.warehouseId) return;
+    this.api.getWarehouseLocations(this.allocationForm.warehouseId).subscribe({
+      next: rows => this.allocationLocations = rows.filter((location: any) => location.isActive),
+      error: () => this.allocationError = 'Could not load warehouse locations.'
+    });
+  }
+
+  editWarehouseAllocation(balance: any) {
+    this.allocationForm = {
+      warehouseId: balance.warehouseId,
+      warehouseLocationId: balance.warehouseLocationId,
+      quantityOnHand: balance.onHand
+    };
+    this.api.getWarehouseLocations(balance.warehouseId).subscribe({
+      next: rows => this.allocationLocations = rows.filter((location: any) => location.isActive)
+    });
+  }
+
+  saveWarehouseAllocation() {
+    if (!this.selectedItem || !this.allocationForm.warehouseLocationId) return;
+    this.savingAllocation = true;
+    this.allocationError = '';
+    this.api.setWarehouseInventoryBalance(this.selectedItem.id, this.allocationForm).subscribe({
+      next: data => {
+        this.warehouseAllocation = data;
+        this.savingAllocation = false;
+        this.allocationForm = { warehouseId: '', warehouseLocationId: '', quantityOnHand: 0 };
+        this.allocationLocations = [];
+      },
+      error: e => {
+        this.savingAllocation = false;
+        this.allocationError = e.error?.error || 'Could not save warehouse allocation.';
+      }
+    });
   }
 
   viewTransactions(item: any) {

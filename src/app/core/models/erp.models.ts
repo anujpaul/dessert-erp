@@ -261,6 +261,25 @@ export interface UpdateThresholdsRequest {
   location?: string;
 }
 
+export interface WarehouseInventoryBalance {
+  id: string;
+  warehouseId: string;
+  warehouseCode: string;
+  warehouseName: string;
+  warehouseLocationId: string;
+  locationCode: string;
+  onHand: number;
+  reserved: number;
+  available: number;
+}
+
+export interface WarehouseInventoryAllocation {
+  totalOnHand: number;
+  allocatedOnHand: number;
+  unallocatedOnHand: number;
+  balances: WarehouseInventoryBalance[];
+}
+
 export interface LowStockItem {
   productVariantId: string;
   sku: string;

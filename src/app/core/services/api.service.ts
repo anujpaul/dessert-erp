@@ -489,6 +489,12 @@ export class ApiService {
   updateInventoryThresholds = (id: string, req: any) =>
     this.http.put<any>(`${this.base}/inventory/items/${id}/thresholds`, req);
 
+  getWarehouseInventoryBalances = (id: string) =>
+    this.http.get<any>(`${this.base}/inventory/items/${id}/warehouse-balances`);
+
+  setWarehouseInventoryBalance = (id: string, req: any) =>
+    this.http.put<any>(`${this.base}/inventory/items/${id}/warehouse-balances`, req);
+
   getInventoryTransactions = (variantId: string, take = 100) =>
     this.http.get<any[]>(`${this.base}/inventory/items/${variantId}/transactions?take=${take}`);
 
