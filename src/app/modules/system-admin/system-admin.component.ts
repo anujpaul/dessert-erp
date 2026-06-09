@@ -22,6 +22,7 @@ interface OrgSettings {
   id: string; code: string; name: string; logoUrl: string | null;
   baseCurrency: string; defaultCurrency: string; timezone: string | null;
   taxId: string | null; address: string | null; phone: string | null; email: string | null;
+  moneyDecimalPlaces: number; moneyRoundingMethod: string; moneyRoundingLevel: string;
 }
 interface OrgSummary {
   id: string; code: string; name: string; baseCurrency: string;
@@ -364,6 +365,27 @@ const TIMEZONES: { zone: string; label: string }[] = [
               </option>
             </select>
           </label>
+          <label>Money Decimal Places
+            <select [(ngModel)]="orgForm.moneyDecimalPlaces" class="form-select">
+              <option [ngValue]="0">0 (whole amounts)</option>
+              <option [ngValue]="1">1 decimal place</option>
+              <option [ngValue]="2">2 decimal places</option>
+              <option [ngValue]="3">3 decimal places</option>
+              <option [ngValue]="4">4 decimal places</option>
+            </select>
+          </label>
+          <label>Midpoint Rounding
+            <select [(ngModel)]="orgForm.moneyRoundingMethod" class="form-select">
+              <option value="HalfUp">Half up (0.005 becomes 0.01)</option>
+              <option value="Bankers">Banker's / half to even</option>
+            </select>
+          </label>
+          <label class="full">Rounding Stage
+            <select [(ngModel)]="orgForm.moneyRoundingLevel" class="form-select">
+              <option value="Line">Round each order line</option>
+              <option value="Document">Round only document totals</option>
+            </select>
+          </label>
         </div>
       </div>
 
@@ -686,6 +708,9 @@ export class SystemAdminComponent implements OnInit {
       address:         this.orgForm.address,
       phone:           this.orgForm.phone,
       email:           this.orgForm.email,
+      moneyDecimalPlaces: this.orgForm.moneyDecimalPlaces,
+      moneyRoundingMethod: this.orgForm.moneyRoundingMethod,
+      moneyRoundingLevel: this.orgForm.moneyRoundingLevel,
     };
     this.http.put<OrgSettings>(`${this.base}/sysadmin/org-settings`, body).subscribe({
       next: d => {
