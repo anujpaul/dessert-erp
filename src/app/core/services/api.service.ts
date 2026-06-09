@@ -122,9 +122,12 @@ export class ApiService {
   createSalesOrder = (r: any) => this.http.post<SalesOrder>(`${this.base}/ar/sales-orders`, r);
   addSalesOrderLine = (id: string, r: any) =>
     this.http.post<SalesOrder>(`${this.base}/ar/sales-orders/${id}/lines`, r);
+  updateSalesOrderLine = (id: string, lineId: string, r: any) =>
+    this.http.put<SalesOrder>(`${this.base}/ar/sales-orders/${id}/lines/${lineId}`, r);
   removeSalesOrderLine = (id: string, lineId: string) =>
     this.http.delete<void>(`${this.base}/ar/sales-orders/${id}/lines/${lineId}`);
-  confirmSalesOrder = (id: string) => this.http.post<void>(`${this.base}/ar/sales-orders/${id}/confirm`, {});
+  confirmSalesOrder = (id: string, backorderLimit = 0) =>
+    this.http.post<void>(`${this.base}/ar/sales-orders/${id}/confirm`, { backorderLimit });
   startPicking = (id: string) => this.http.post<void>(`${this.base}/ar/sales-orders/${id}/picking`, {});
   shipSalesOrder = (id: string, r: any) => this.http.post<void>(`${this.base}/ar/sales-orders/${id}/ship`, r);
   cancelSalesOrder = (id: string) => this.http.post<void>(`${this.base}/ar/sales-orders/${id}/cancel`, {});

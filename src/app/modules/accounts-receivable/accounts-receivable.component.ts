@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { Customer, CustomerAddress, CustomerContact, CustomerLedger, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport, VariantLookup } from '../../core/models/erp.models';
+import { Customer, CustomerAddress, CustomerContact, CustomerLedger, SalesOrderSummary, SalesOrder, SalesOrderLine, ARInvoice, ARAgingReport, VariantLookup } from '../../core/models/erp.models';
 
 type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | 'creditnotes';
 
@@ -328,9 +328,9 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | '
             <button *ngIf="selectedOrder.status === 'Draft' && !selectedOrder.workflowInstanceId" class="btn-ghost-sm" (click)="submitSOForApproval(selectedOrder.id)">📤 Submit for Approval</button>
             <button *ngIf="selectedOrder.status === 'PendingApproval'" class="btn-primary-sm" (click)="approveSOWorkflow(selectedOrder.id)">✅ Approve</button>
             <button *ngIf="selectedOrder.status === 'PendingApproval'" class="btn-danger-sm" (click)="rejectSOWorkflow(selectedOrder.id)">❌ Reject</button>
-            <button *ngIf="selectedOrder.status === 'Draft' && !selectedOrder.workflowInstanceId" class="btn-primary-sm" (click)="soAction('confirm')">Confirm</button>
+            <button *ngIf="selectedOrder.status === 'Draft' && !selectedOrder.workflowInstanceId" class="btn-primary-sm" (click)="showConfirmOptions = true">Confirm</button>
             <button *ngIf="selectedOrder.status === 'Confirmed'" class="btn-primary-sm" (click)="soAction('picking')">Start Picking</button>
-            <button *ngIf="selectedOrder.status === 'Picking'" class="btn-primary-sm" (click)="soShip()">Ship</button>
+            <button *ngIf="['Picking','PartiallyShipped'].includes(selectedOrder.status)" class="btn-primary-sm" (click)="openShipment()">Ship</button>
             <button *ngIf="selectedOrder.status === 'Shipped'" class="btn-primary-sm" (click)="soConfirmDelivery(selectedOrder.id)">📦 Confirm Delivery</button>
             <button *ngIf="selectedOrder.status === 'Shipped'" class="btn-primary-sm" (click)="soGenerateInvoice()">Generate Invoice</button>
             <button *ngIf="['Draft','Confirmed','Picking'].includes(selectedOrder.status) && selectedOrder.status !== 'PendingApproval'" class="btn-danger-sm" (click)="soAction('cancel')">Cancel</button>
@@ -339,6 +339,51 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | '
           <div *ngIf="selectedOrder.rejectionReason" style="color:#dc2626;font-size:.8rem;margin-top:.35rem">⚠️ Rejected: {{ selectedOrder.rejectionReason }}</div>
           <div *ngIf="selectedOrder.isExported" class="export-badge">
             ✓ Exported {{ selectedOrder.exportedAt | date:'MMM d, y HH:mm' }}
+          </div>
+        </div>
+        <div *ngIf="soError" style="margin-bottom:12px;padding:.65rem .8rem;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:6px;font-size:.85rem">
+          {{ soError }}
+        </div>
+        <div *ngIf="showConfirmOptions && selectedOrder.status === 'Draft'" class="form-card" style="margin-bottom:12px">
+          <div class="form-title">Confirm Sales Order</div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.88rem;margin-bottom:10px">
+            <input type="checkbox" [(ngModel)]="allowBackorder" />
+            Allow a limited backorder
+          </label>
+          <div class="form-field" *ngIf="allowBackorder" style="max-width:240px">
+            <label>Maximum backorder per item</label>
+            <input type="number" min="0" step="1" [(ngModel)]="backorderLimit" />
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" (click)="confirmSO()">Confirm Order</button>
+            <button class="btn-ghost" (click)="showConfirmOptions = false">Cancel</button>
+          </div>
+        </div>
+        <div *ngIf="showShipmentForm && ['Picking','PartiallyShipped'].includes(selectedOrder.status)" class="form-card" style="margin-bottom:12px">
+          <div class="form-title">Record Shipment</div>
+          <div class="form-grid">
+            <div class="form-field"><label>Ship Date</label><input type="date" [(ngModel)]="shipmentDate" /></div>
+            <div class="form-field"><label>Tracking Number</label><input [(ngModel)]="shipmentTrackingNumber" /></div>
+          </div>
+          <table class="data-table" style="margin-top:10px">
+            <thead><tr><th>Item</th><th class="num">Ordered</th><th class="num">Shipped</th><th class="num">Remaining</th><th class="num">Ship Now</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let l of selectedOrder.lines">
+                <td><code>{{ l.sku }}</code> {{ l.productName }}</td>
+                <td class="num">{{ l.quantity }}</td>
+                <td class="num">{{ l.quantityShipped || 0 }}</td>
+                <td class="num">{{ remainingQty(l) }}</td>
+                <td class="num">
+                  <input type="number" min="0" [max]="remainingQty(l)" step="1"
+                    [(ngModel)]="shipmentQuantities[l.id]" [disabled]="remainingQty(l) <= 0"
+                    style="width:80px;padding:.3rem;border:1px solid #d1d5db;border-radius:5px;text-align:right" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="form-actions">
+            <button class="btn-primary" (click)="submitShipment()">Post Shipment</button>
+            <button class="btn-ghost" (click)="showShipmentForm = false">Cancel</button>
           </div>
         </div>
         <div class="info-grid">
@@ -390,12 +435,19 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | '
 
         <div class="sub-section-title">Order Lines</div>
         <table class="data-table">
-          <thead><tr><th>Product</th><th>UOM</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Discount</th><th class="num">Tax</th><th class="num">Total</th><th *ngIf="selectedOrder.status === 'Draft'"></th></tr></thead>
+          <thead><tr><th>Product</th><th>UOM</th><th class="num">Qty</th><th class="num" *ngIf="selectedOrder.status !== 'Draft'">Shipped</th><th class="num">Price</th><th class="num">Discount</th><th class="num">Tax</th><th class="num">Total</th><th *ngIf="selectedOrder.status === 'Draft'"></th></tr></thead>
           <tbody>
             <tr *ngFor="let l of selectedOrder.lines">
               <td><code>{{ l.sku }}</code> {{ l.productName }}<span *ngIf="l.variantDescription" style="color:#6b7280;margin-left:.3rem">· {{ l.variantDescription }}</span></td>
               <td>{{ l.unitOfMeasure }}</td>
-              <td class="num">{{ l.quantity }}</td>
+              <td class="num">
+                <input *ngIf="selectedOrder.status === 'Draft'" type="number" min="1" step="1"
+                  [(ngModel)]="draftLineQuantities[l.id]"
+                  style="width:70px;padding:.3rem;border:1px solid #d1d5db;border-radius:5px;text-align:right" />
+                <button *ngIf="selectedOrder.status === 'Draft'" class="btn-xs" (click)="updateSOLine(l)" style="margin-left:4px">Save</button>
+                <span *ngIf="selectedOrder.status !== 'Draft'">{{ l.quantity }}</span>
+              </td>
+              <td class="num" *ngIf="selectedOrder.status !== 'Draft'">{{ l.quantityShipped || 0 }}</td>
               <td class="num">{{ l.unitPrice | currency }}</td>
               <td class="num">{{ l.discountPct }}%</td>
               <td class="num">{{ l.taxAmount | currency }}</td>
@@ -405,7 +457,7 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | '
           </tbody>
           <tfoot>
             <tr class="total-row">
-              <td colspan="5"><strong>Grand Total</strong></td>
+              <td [attr.colspan]="selectedOrder.status === 'Draft' ? 5 : 6"><strong>Grand Total</strong></td>
               <td class="num"><strong>{{ selectedOrder.taxTotal | currency }}</strong></td>
               <td class="num"><strong>{{ selectedOrder.grandTotal | currency }}</strong></td>
               <td *ngIf="selectedOrder.status === 'Draft'"></td>
@@ -792,6 +844,7 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | '
     .badge-so-draft { background: #f1f5f9; color: #475569; }
     .badge-so-confirmed { background: #dbeafe; color: #1d4ed8; }
     .badge-so-picking { background: #fef9c3; color: #92400e; }
+    .badge-so-partiallyshipped { background: #ffedd5; color: #9a3412; }
     .badge-so-shipped { background: #e0f2fe; color: #0369a1; }
     .badge-so-invoiced { background: #f0fdf4; color: #166534; }
     .badge-so-closed { background: #f1f5f9; color: #475569; }
@@ -977,6 +1030,15 @@ export class AccountsReceivableComponent implements OnInit {
   couponCodeInput = '';
   appliedCoupon: { code: string; promotionName: string; discountType: string; discountValue: number } | null = null;
   couponError = '';
+  soError = '';
+  showConfirmOptions = false;
+  allowBackorder = false;
+  backorderLimit = 0;
+  draftLineQuantities: Record<string, number> = {};
+  showShipmentForm = false;
+  shipmentDate = new Date().toISOString().split('T')[0];
+  shipmentTrackingNumber = '';
+  shipmentQuantities: Record<string, number> = {};
   private searchTimer: any;
 
   arInvoices: ARInvoice[] = [];
@@ -1204,13 +1266,13 @@ export class AccountsReceivableComponent implements OnInit {
   }
 
   selectOrder(id: string) {
-    this.api.getSalesOrder(id).subscribe(d => this.selectedOrder = d);
+    this.api.getSalesOrder(id).subscribe(d => this.applySelectedOrder(d));
   }
 
   createSO() {
     this.api.createSalesOrder(this.soForm).subscribe(d => {
       this.loadSalesOrders();
-      this.selectedOrder = d;
+      this.applySelectedOrder(d);
       this.showCreateSO = false;
       this.showInlineNewCust = false;
       this.custSearchInSO = '';
@@ -1251,7 +1313,7 @@ export class AccountsReceivableComponent implements OnInit {
       quantity: this.addLineQty,
       discountPct
     }).subscribe(d => {
-      this.selectedOrder = d;
+      this.applySelectedOrder(d);
       this.clearVariant();
       this.addLineQty = 1;
     });
@@ -1323,22 +1385,112 @@ export class AccountsReceivableComponent implements OnInit {
     });
   }
 
-  soAction(action: 'confirm' | 'picking' | 'cancel') {
-    if (!this.selectedOrder) return;
-    const id = this.selectedOrder.id;
-    let obs$: any;
-    if (action === 'confirm') obs$ = this.api.confirmSalesOrder(id);
-    else if (action === 'picking') obs$ = this.api.startPicking(id);
-    else obs$ = this.api.cancelSalesOrder(id);
-    obs$.subscribe(() => this.api.getSalesOrder(id).subscribe(d => this.selectedOrder = d));
+  private applySelectedOrder(order: SalesOrder) {
+    this.selectedOrder = order;
+    this.draftLineQuantities = Object.fromEntries(order.lines.map(l => [l.id, l.quantity]));
+    this.soError = '';
   }
 
-  soShip() {
+  private orderError(err: any, fallback: string) {
+    this.soError = err?.error?.error || err?.message || fallback;
+  }
+
+  confirmSO() {
     if (!this.selectedOrder) return;
-    const trackingNumber = prompt('Tracking number (optional):') || '';
-    this.api.shipSalesOrder(this.selectedOrder.id, { trackingNumber }).subscribe(() =>
-      this.api.getSalesOrder(this.selectedOrder!.id).subscribe(d => this.selectedOrder = d)
+    const id = this.selectedOrder.id;
+    const limit = this.allowBackorder ? Math.max(0, Number(this.backorderLimit) || 0) : 0;
+    this.soError = '';
+    this.api.confirmSalesOrder(id, limit).subscribe({
+      next: () => {
+        this.showConfirmOptions = false;
+        this.loadSalesOrders();
+        this.api.getSalesOrder(id).subscribe(d => this.applySelectedOrder(d));
+      },
+      error: err => this.orderError(err, 'Unable to confirm this sales order.')
+    });
+  }
+
+  soAction(action: 'picking' | 'cancel') {
+    if (!this.selectedOrder) return;
+    const id = this.selectedOrder.id;
+    const obs$ = action === 'picking' ? this.api.startPicking(id) : this.api.cancelSalesOrder(id);
+    this.soError = '';
+    obs$.subscribe({
+      next: () => {
+        this.loadSalesOrders();
+        this.api.getSalesOrder(id).subscribe(d => this.applySelectedOrder(d));
+      },
+      error: err => this.orderError(err, `Unable to ${action === 'picking' ? 'start picking' : 'cancel the order'}.`)
+    });
+  }
+
+  remainingQty(line: SalesOrderLine): number {
+    return Math.max(0, line.quantity - (line.quantityShipped || 0));
+  }
+
+  openShipment() {
+    if (!this.selectedOrder) return;
+    this.soError = '';
+    this.shipmentDate = new Date().toISOString().split('T')[0];
+    this.shipmentTrackingNumber = '';
+    this.shipmentQuantities = Object.fromEntries(
+      this.selectedOrder.lines.map(l => [l.id, this.remainingQty(l)])
     );
+    this.showShipmentForm = true;
+  }
+
+  submitShipment() {
+    if (!this.selectedOrder) return;
+    const id = this.selectedOrder.id;
+    const lines = this.selectedOrder.lines
+      .map(line => ({ lineId: line.id, quantity: Number(this.shipmentQuantities[line.id]) || 0 }))
+      .filter(line => line.quantity > 0);
+
+    if (!lines.length) {
+      this.soError = 'Enter a shipment quantity for at least one line.';
+      return;
+    }
+
+    const invalidLine = lines.find(request => {
+      const line = this.selectedOrder!.lines.find(l => l.id === request.lineId)!;
+      return request.quantity > this.remainingQty(line);
+    });
+    if (invalidLine) {
+      this.soError = 'A shipment quantity cannot exceed the remaining order quantity.';
+      return;
+    }
+
+    this.soError = '';
+    this.api.shipSalesOrder(id, {
+      shipDate: this.shipmentDate,
+      trackingNumber: this.shipmentTrackingNumber,
+      lines
+    }).subscribe({
+      next: () => {
+        this.showShipmentForm = false;
+        this.loadSalesOrders();
+        this.api.getSalesOrder(id).subscribe(d => this.applySelectedOrder(d));
+      },
+      error: err => this.orderError(err, 'Unable to post this shipment.')
+    });
+  }
+
+  updateSOLine(line: SalesOrderLine) {
+    if (!this.selectedOrder) return;
+    const quantity = Number(this.draftLineQuantities[line.id]);
+    if (!quantity || quantity <= 0) {
+      this.soError = 'Line quantity must be greater than zero.';
+      return;
+    }
+
+    this.soError = '';
+    this.api.updateSalesOrderLine(this.selectedOrder.id, line.id, { quantity }).subscribe({
+      next: order => {
+        this.applySelectedOrder(order);
+        this.loadSalesOrders();
+      },
+      error: err => this.orderError(err, 'Unable to update the sales order line.')
+    });
   }
 
   soGenerateInvoice() {
@@ -1356,9 +1508,15 @@ export class AccountsReceivableComponent implements OnInit {
 
   removeSOLine(lineId: string) {
     if (!this.selectedOrder) return;
-    this.api.removeSalesOrderLine(this.selectedOrder.id, lineId).subscribe(() =>
-      this.api.getSalesOrder(this.selectedOrder!.id).subscribe(d => this.selectedOrder = d)
-    );
+    const id = this.selectedOrder.id;
+    this.soError = '';
+    this.api.removeSalesOrderLine(id, lineId).subscribe({
+      next: () => {
+        this.loadSalesOrders();
+        this.api.getSalesOrder(id).subscribe(d => this.applySelectedOrder(d));
+      },
+      error: err => this.orderError(err, 'Unable to remove the sales order line.')
+    });
   }
 
   toggleCustLedger() { this.showCustLedger = !this.showCustLedger; }
@@ -1369,7 +1527,16 @@ export class AccountsReceivableComponent implements OnInit {
     this.api.submitSOForApproval(id, submittedBy).subscribe(d => this.selectedOrder = d);
   }
 
-  approveSOWorkflow(id: string) { this.api.approveSOWorkflow(id).subscribe(d => this.selectedOrder = d); }
+  approveSOWorkflow(id: string) {
+    this.soError = '';
+    this.api.approveSOWorkflow(id).subscribe({
+      next: d => {
+        this.applySelectedOrder(d);
+        this.loadSalesOrders();
+      },
+      error: err => this.orderError(err, 'Unable to approve this sales order.')
+    });
+  }
 
   rejectSOWorkflow(id: string) {
     const reason = prompt('Rejection reason:') || '';

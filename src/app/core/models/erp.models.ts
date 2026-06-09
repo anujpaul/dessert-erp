@@ -392,11 +392,11 @@ export interface CustomerLedger {
   totalInvoiced: number; totalPaid: number; outstandingBalance: number;
   entries: CustomerLedgerEntry[];
 }
-export type SalesOrderStatus = 'Draft' | 'PendingApproval' | 'Confirmed' | 'Picking' | 'Shipped' | 'Delivered' | 'Invoiced' | 'Closed' | 'Cancelled';
+export type SalesOrderStatus = 'Draft' | 'PendingApproval' | 'Confirmed' | 'Picking' | 'PartiallyShipped' | 'Shipped' | 'Delivered' | 'Invoiced' | 'Closed' | 'Cancelled';
 export interface SalesOrderLine {
   id: string; productVariantId: string; sku: string;
   productName: string; variantDescription?: string;
-  unitOfMeasure: string; quantity: number; unitPrice: number;
+  unitOfMeasure: string; quantity: number; quantityShipped: number; unitPrice: number;
   discountPct: number; taxRate: number;
   lineSubTotal: number; discountAmount: number; taxAmount: number; lineTotal: number;
 }
