@@ -463,6 +463,20 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
             </table>
           </div>
         </div>
+
+        <div class="sub-section-title" style="margin-top:1rem">Change History</div>
+        <div *ngIf="!poHistory.length" class="empty" style="padding:.75rem">No changes recorded yet.</div>
+        <table *ngIf="poHistory.length" class="data-table">
+          <thead><tr><th>When</th><th>User</th><th>Action</th><th>Details</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let h of poHistory">
+              <td>{{ h.occurredAt | date:'MMM d, y HH:mm' }}</td>
+              <td>{{ h.username }}</td>
+              <td><strong>{{ h.action }}</strong></td>
+              <td class="muted">{{ auditDetails(h) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       <div class="detail-panel empty-detail" *ngIf="!selectedPO">Select a purchase order.</div>
     </div>
@@ -1111,6 +1125,7 @@ export class AccountsPayableComponent implements OnInit {
   // Purchase Orders
   purchaseOrders: PurchaseOrderSummary[] = [];
   selectedPO: PurchaseOrder | null = null;
+  poHistory: any[] = [];
   poStatusFilter = '';
   showCreatePO = false;
   showReceive = false;
@@ -1385,6 +1400,19 @@ export class AccountsPayableComponent implements OnInit {
       this.showReceiptHistory = false;
       this.clearLineForm();
     });
+    this.api.getPurchaseOrderHistory(id).subscribe(d => this.poHistory = d);
+  }
+
+  auditDetails(entry: any): string {
+    const raw = entry.newValues || entry.oldValues;
+    if (!raw) return '';
+    try {
+      return Object.entries(JSON.parse(raw))
+        .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+        .join(', ');
+    } catch {
+      return raw;
+    }
   }
 
   toggleReceiptHistory() {

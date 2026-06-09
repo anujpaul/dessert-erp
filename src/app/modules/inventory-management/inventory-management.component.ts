@@ -65,6 +65,28 @@ import { ApiService } from '../../core/services/api.service';
         <option value="out-of-stock">Out of Stock</option>
         <option value="on-order">On Order</option>
       </select>
+      <select class="filter-select" [(ngModel)]="categoryFilter" (change)="onFilterChange()">
+        <option value="">All Categories</option>
+        <option *ngFor="let option of filterOptions.categories" [value]="option">{{ option }}</option>
+      </select>
+      <select class="filter-select" [(ngModel)]="brandFilter" (change)="onFilterChange()">
+        <option value="">All Brands</option>
+        <option *ngFor="let option of filterOptions.brands" [value]="option">{{ option }}</option>
+      </select>
+      <select class="filter-select" [(ngModel)]="locationFilter" (change)="onFilterChange()">
+        <option value="">All Locations</option>
+        <option *ngFor="let option of filterOptions.locations" [value]="option">{{ option }}</option>
+      </select>
+      <select class="filter-select" [(ngModel)]="sortBy" (change)="onFilterChange()">
+        <option value="sku">Sort: SKU</option>
+        <option value="product">Sort: Product</option>
+        <option value="onHand">Sort: On Hand</option>
+        <option value="available">Sort: Available</option>
+        <option value="value">Sort: Value</option>
+      </select>
+      <button class="btn-secondary" (click)="descending=!descending; onFilterChange()">
+        {{ descending ? 'Descending' : 'Ascending' }}
+      </button>
     </div>
 
     <!-- Items Table -->
@@ -127,6 +149,19 @@ import { ApiService } from '../../core/services/api.service';
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="pagination">
+      <span>{{ totalCount | number }} items</span>
+      <button class="btn-secondary" (click)="changePage(page - 1)" [disabled]="page <= 1">Previous</button>
+      <span>Page {{ page }} of {{ totalPages || 1 }}</span>
+      <button class="btn-secondary" (click)="changePage(page + 1)" [disabled]="page >= totalPages">Next</button>
+      <select class="filter-select" [(ngModel)]="pageSize" (change)="changePageSize()">
+        <option [ngValue]="25">25 per page</option>
+        <option [ngValue]="50">50 per page</option>
+        <option [ngValue]="100">100 per page</option>
+        <option [ngValue]="200">200 per page</option>
+      </select>
     </div>
 
     <!-- Detail Panel (selected item) -->
@@ -439,9 +474,11 @@ import { ApiService } from '../../core/services/api.service';
     .card.success .card-value { color: #16a34a; }
 
     /* ── Toolbar ── */
-    .toolbar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
+    .toolbar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
     .search-box { flex: 1; max-width: 340px; padding: 8px 12px; border: 1px solid var(--border, #e5e7eb); border-radius: 6px; font-size: 14px; }
     .filter-select { padding: 8px 12px; border: 1px solid var(--border, #e5e7eb); border-radius: 6px; font-size: 14px; }
+    .pagination { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:12px; font-size:13px; color:var(--text-secondary, #6b7280); }
+    .pagination button:disabled { opacity:.5; cursor:not-allowed; }
 
     /* ── Table ── */
     .table-wrapper { overflow-x: auto; background: var(--surface, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 10px; }
@@ -555,6 +592,17 @@ export class InventoryManagementComponent implements OnInit {
 
   searchTerm = '';
   filterMode = '';
+  categoryFilter = '';
+  brandFilter = '';
+  locationFilter = '';
+  sortBy = 'sku';
+  descending = false;
+  filterOptions = { categories: [] as string[], brands: [] as string[], locations: [] as string[] };
+  page = 1;
+  pageSize = 50;
+  totalCount = 0;
+  totalPages = 0;
+  private inventorySearchTimer: any;
 
   selectedItem: any = null;
   itemTransactions: any[] = [];
@@ -578,22 +626,52 @@ export class InventoryManagementComponent implements OnInit {
 
   loadAll() {
     this.api.getInventorySummary().subscribe(s => this.summary = s);
+    this.api.getInventoryFilterOptions().subscribe(o => this.filterOptions = o);
     this.loadItems();
   }
 
   loadItems() {
-    this.api.getInventoryItems(
-      this.searchTerm || undefined,
-      this.filterMode || undefined
-    ).subscribe(d => this.items = d);
+    this.api.getInventoryItems({
+      search: this.searchTerm || undefined,
+      filter: this.filterMode || undefined,
+      category: this.categoryFilter || undefined,
+      brand: this.brandFilter || undefined,
+      location: this.locationFilter || undefined,
+      sortBy: this.sortBy,
+      descending: this.descending,
+      page: this.page,
+      pageSize: this.pageSize
+    }).subscribe(d => {
+      this.items = d.items;
+      this.totalCount = d.totalCount;
+      this.totalPages = d.totalPages;
+    });
   }
 
-  onSearch() { this.loadItems(); }
-  onFilterChange() { this.loadItems(); }
+  onSearch() {
+    clearTimeout(this.inventorySearchTimer);
+    this.inventorySearchTimer = setTimeout(() => {
+      this.page = 1;
+      this.loadItems();
+    }, 300);
+  }
+  onFilterChange() { this.page = 1; this.loadItems(); }
+
+  changePage(page: number) {
+    if (page < 1 || page > this.totalPages) return;
+    this.page = page;
+    this.loadItems();
+  }
+
+  changePageSize() {
+    this.page = 1;
+    this.loadItems();
+  }
 
   filterItems(filter: string) {
     this.activeTab = 'items';
     this.filterMode = filter;
+    this.page = 1;
     this.loadItems();
   }
 

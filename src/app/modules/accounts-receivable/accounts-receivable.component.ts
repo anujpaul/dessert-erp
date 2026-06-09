@@ -464,6 +464,20 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | '
             </tr>
           </tfoot>
         </table>
+
+        <div class="sub-section-title" style="margin-top:1rem">Change History</div>
+        <div *ngIf="!soHistory.length" class="empty" style="padding:.75rem">No changes recorded yet.</div>
+        <table *ngIf="soHistory.length" class="data-table">
+          <thead><tr><th>When</th><th>User</th><th>Action</th><th>Details</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let h of soHistory">
+              <td>{{ h.occurredAt | date:'MMM d, y HH:mm' }}</td>
+              <td>{{ h.username }}</td>
+              <td><strong>{{ h.action }}</strong></td>
+              <td class="muted">{{ auditDetails(h) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       <div class="detail-panel empty-detail" *ngIf="!selectedOrder">Select a sales order.</div>
     </div>
@@ -968,6 +982,7 @@ export class AccountsReceivableComponent implements OnInit {
 
   salesOrders: SalesOrderSummary[] = [];
   selectedOrder: SalesOrder | null = null;
+  soHistory: any[] = [];
   soStatusFilter = '';
   showCreateSO = false;
   soForm = { customerId:'', orderDate:'', requestedShipDate:'', customerRef:'', description:'', currency:'USD' };
@@ -1267,6 +1282,19 @@ export class AccountsReceivableComponent implements OnInit {
 
   selectOrder(id: string) {
     this.api.getSalesOrder(id).subscribe(d => this.applySelectedOrder(d));
+    this.api.getSalesOrderHistory(id).subscribe(d => this.soHistory = d);
+  }
+
+  auditDetails(entry: any): string {
+    const raw = entry.newValues || entry.oldValues;
+    if (!raw) return '';
+    try {
+      return Object.entries(JSON.parse(raw))
+        .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+        .join(', ');
+    } catch {
+      return raw;
+    }
   }
 
   createSO() {

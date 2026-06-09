@@ -460,12 +460,22 @@ export class ApiService {
   getInventorySummary = () =>
     this.http.get<any>(`${this.base}/inventory/summary`);
 
-  getInventoryItems = (search?: string, filter?: string) => {
+  getInventoryItems = (filters: any = {}) => {
     let params = new HttpParams();
-    if (search) params = params.set('search', search);
-    if (filter) params = params.set('filter', filter);
-    return this.http.get<any[]>(`${this.base}/inventory/items`, { params });
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params = params.set(key, String(value));
+    });
+    return this.http.get<any>(`${this.base}/inventory/items`, { params });
   };
+
+  getInventoryFilterOptions = () =>
+    this.http.get<any>(`${this.base}/inventory/filter-options`);
+
+  getSalesOrderHistory = (id: string) =>
+    this.http.get<any[]>(`${this.base}/ar/sales-orders/${id}/history`);
+
+  getPurchaseOrderHistory = (id: string) =>
+    this.http.get<any[]>(`${this.base}/ap/purchase-orders/${id}/history`);
 
   getInventoryItem = (id: string) =>
     this.http.get<any>(`${this.base}/inventory/items/${id}`);
