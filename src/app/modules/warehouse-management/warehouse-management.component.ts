@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
+import { OrgService } from '../../core/services/org.service';
 
 @Component({
   selector: 'app-warehouse-management',
@@ -677,14 +678,14 @@ export class WarehouseManagementComponent implements OnInit {
   get pendingOutbound() { return this.outboundOrders.filter(o => !['Delivered','Cancelled'].includes(o.status)).length; }
   get pendingTransfer() { return this.transferOrders.filter(o => !['Completed','Cancelled'].includes(o.status)).length; }
 
-  private get orgId() { return localStorage.getItem('selectedOrgId') || ''; }
+  private get orgId() { return this.orgService.organizationId || ''; }
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private orgService: OrgService) {}
 
   ngOnInit() { this.loadAll(); }
 
   loadAll() {
-    this.api.getWarehouses(this.orgId).subscribe({ next: d => { this.warehouses = d; this.applyWarehouseFilter(); }, error: () => {} });
+    this.api.getWarehouses().subscribe({ next: d => { this.warehouses = d; this.applyWarehouseFilter(); }, error: () => {} });
     this.api.getInboundOrders(this.orgId).subscribe({ next: d => { this.inboundOrders = d; this.applyInboundFilter(); }, error: () => {} });
     this.api.getOutboundOrders(this.orgId).subscribe({ next: d => { this.outboundOrders = d; this.applyOutboundFilter(); }, error: () => {} });
     this.api.getTransferOrders(this.orgId).subscribe({ next: d => { this.transferOrders = d; this.applyTransferFilter(); }, error: () => {} });
@@ -761,10 +762,9 @@ export class WarehouseManagementComponent implements OnInit {
         error: () => this.error = 'Failed to update warehouse.'
       });
     } else {
-      const body = { ...this.whForm, organizationId: this.orgId };
-      this.api.createWarehouse(body).subscribe({
+      this.api.createWarehouse(this.whForm).subscribe({
         next: () => { this.showWhModal = false; this.loadAll(); },
-        error: () => this.error = 'Failed to create warehouse.'
+        error: e => this.error = e.error?.error ?? 'Failed to create warehouse.'
       });
     }
   }

@@ -650,8 +650,8 @@ export class ApiService {
 
   // ── Warehouse Management ─────────────────────────────────────────────────
 
-  getWarehouses = (organizationId: string) =>
-    this.http.get<any[]>(`${this.base}/warehouse?organizationId=${organizationId}`);
+  getWarehouses = () =>
+    this.http.get<any[]>(`${this.base}/warehouse`);
 
   getWarehouse = (id: string) =>
     this.http.get<any>(`${this.base}/warehouse/${id}`);
