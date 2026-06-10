@@ -517,7 +517,8 @@ export interface PurchaseOrderSummary {
 }
 export interface PurchaseOrder {
   id: string; poNumber: string; vendorId: string; vendorName: string;
-  orderDate: string; expectedDate?: string; description: string; currency: string;
+  orderDate: string; expectedDate?: string; warehouseId?: string; warehouseName?: string;
+  description: string; currency: string;
   status: POStatus; invoiceStatus: POInvoiceStatus;
   subTotal: number; taxTotal: number; grandTotal: number;
   invoicedAmount: number; canReceive: boolean;
@@ -527,7 +528,10 @@ export interface ReceiptLine {
   id: string; purchaseOrderLineId: string; productCode: string; description: string; qty: number;
 }
 export interface Receipt {
-  id: string; receiptNumber: string; receivedDate: string; notes?: string; createdAt: string;
+  id: string; receiptNumber: string; receivedDate: string;
+  warehouseId?: string; warehouseName: string;
+  warehouseLocationId?: string; warehouseLocationCode: string;
+  notes?: string; createdAt: string;
   lines: ReceiptLine[];
 }
 export type APInvoiceType = 'Standard' | 'Prepayment';

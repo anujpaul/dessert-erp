@@ -259,6 +259,15 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
         </div>
         <div class="form-field"><label>Order Date *</label><input type="date" [(ngModel)]="poForm.orderDate" /></div>
         <div class="form-field"><label>Expected Date</label><input type="date" [(ngModel)]="poForm.expectedDate" /></div>
+        <div class="form-field">
+          <label>Destination Warehouse</label>
+          <select [(ngModel)]="poForm.warehouseId">
+            <option value="">— select later —</option>
+            <option *ngFor="let warehouse of warehouses" [value]="warehouse.id">
+              {{ warehouse.code }} — {{ warehouse.name }}
+            </option>
+          </select>
+        </div>
         <div class="form-field"><label>Currency</label><input [(ngModel)]="poForm.currency" /></div>
         <div class="form-field" style="grid-column:1/-1"><label>Description</label><input [(ngModel)]="poForm.description" /></div>
       </div>
@@ -333,6 +342,7 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
           </div>
           <div class="info-item"><span class="info-label">Order Date</span><span>{{ selectedPO.orderDate | date:'mediumDate' }}</span></div>
           <div class="info-item"><span class="info-label">Expected</span><span>{{ selectedPO.expectedDate ? (selectedPO.expectedDate | date:'mediumDate') : '—' }}</span></div>
+          <div class="info-item"><span class="info-label">Destination Warehouse</span><span>{{ selectedPO.warehouseName || 'Select when receiving' }}</span></div>
           <div class="info-item"><span class="info-label">PO Value</span><span><strong>{{ selectedPO.grandTotal | currency }}</strong></span></div>
           <div class="info-item"><span class="info-label">Invoiced So Far</span><span [class.ok]="selectedPO.invoicedAmount > 0">{{ selectedPO.invoicedAmount | currency }}</span></div>
           <div class="info-item"><span class="info-label">Uninvoiced</span><span [class.warn]="(selectedPO.grandTotal - selectedPO.invoicedAmount) > 0">{{ (selectedPO.grandTotal - selectedPO.invoicedAmount) | currency }}</span></div>
@@ -378,7 +388,25 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
         <!-- ── Receive Goods form ── -->
         <div *ngIf="showReceive" class="form-card">
           <div class="form-title">📥 Record Goods Receipt</div>
-          <div class="form-grid" style="grid-template-columns:1fr 1fr; margin-bottom:.75rem">
+          <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin-bottom:.75rem">
+            <div class="form-field">
+              <label>Receiving Warehouse *</label>
+              <select [(ngModel)]="receiveWarehouseId" (change)="loadReceiveLocations()">
+                <option value="">— select —</option>
+                <option *ngFor="let warehouse of warehouses" [value]="warehouse.id">
+                  {{ warehouse.code }} — {{ warehouse.name }}
+                </option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Receiving Location *</label>
+              <select [(ngModel)]="receiveLocationId" [disabled]="!receiveWarehouseId">
+                <option value="">— select —</option>
+                <option *ngFor="let location of receiveLocations" [value]="location.id">
+                  {{ location.code }}
+                </option>
+              </select>
+            </div>
             <div class="form-field">
               <label>Received Date</label>
               <input type="date" [(ngModel)]="receiveDate" />
@@ -411,7 +439,8 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
             </tbody>
           </table>
           <div class="form-actions" style="margin-top:.75rem">
-            <button class="btn-primary" (click)="submitReceive()">Confirm Receipt</button>
+            <button class="btn-primary" (click)="submitReceive()"
+                    [disabled]="!receiveWarehouseId || !receiveLocationId">Confirm Receipt</button>
             <button class="btn-ghost" (click)="showReceive = false">Cancel</button>
           </div>
         </div>
@@ -449,6 +478,7 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
             <div class="receipt-header">
               <strong>{{ r.receiptNumber }}</strong>
               <span class="muted">{{ r.receivedDate | date:'mediumDate' }}</span>
+              <span class="muted">· {{ r.warehouseName }} / {{ r.warehouseLocationCode }}</span>
               <span *ngIf="r.notes" class="muted">· {{ r.notes }}</span>
             </div>
             <table class="data-table" style="margin-top:.5rem">
@@ -1132,9 +1162,13 @@ export class AccountsPayableComponent implements OnInit {
   receiveQtys: number[] = [];
   receiveDate: string = '';
   receiveNotes: string = '';
+  warehouses: any[] = [];
+  receiveLocations: any[] = [];
+  receiveWarehouseId = '';
+  receiveLocationId = '';
   receipts: Receipt[] = [];
   showReceiptHistory = false;
-  poForm = { vendorId:'', orderDate:'', expectedDate:'', description:'', currency:'USD' };
+  poForm = { vendorId:'', orderDate:'', expectedDate:'', warehouseId:'', description:'', currency:'USD' };
 
   // Variant picker for PO line
   variantQuery = '';
@@ -1208,6 +1242,10 @@ export class AccountsPayableComponent implements OnInit {
 
   ngOnInit() {
     this.api.getVendors().subscribe(d => this.vendors = d);
+    this.api.getWarehouses().subscribe({
+      next: rows => this.warehouses = rows.filter((warehouse: any) => warehouse.isActive),
+      error: () => this.warehouses = []
+    });
     this.loadPOs();
     this.api.getAPInvoices().subscribe(d => this.apInvoices = d);
     this.loadAPAging();
@@ -1434,7 +1472,7 @@ export class AccountsPayableComponent implements OnInit {
       this.selectedPO = d;
       this.receiveQtys = [];
       this.showCreatePO = false;
-      this.poForm = { vendorId:'', orderDate:'', expectedDate:'', description:'', currency:'USD' };
+      this.poForm = { vendorId:'', orderDate:'', expectedDate:'', warehouseId:'', description:'', currency:'USD' };
     });
   }
 
@@ -1495,8 +1533,23 @@ export class AccountsPayableComponent implements OnInit {
   openReceiveForm() {
     this.receiveDate = new Date().toISOString().split('T')[0];
     this.receiveNotes = '';
+    this.receiveWarehouseId = this.selectedPO?.warehouseId || '';
+    this.receiveLocationId = '';
+    this.receiveLocations = [];
+    if (this.receiveWarehouseId) this.loadReceiveLocations();
     this.receiveQtys = (this.selectedPO?.lines ?? []).map(() => 0);
     this.showReceive = true;
+  }
+
+  loadReceiveLocations() {
+    this.receiveLocationId = '';
+    this.receiveLocations = [];
+    if (!this.receiveWarehouseId) return;
+    this.api.getWarehouseLocations(this.receiveWarehouseId).subscribe({
+      next: rows => this.receiveLocations = rows.filter(
+        (location: any) => location.isActive && location.isReceivable),
+      error: () => alert('Could not load receiving locations.')
+    });
   }
 
   /** True when there is received value not yet fully invoiced */
@@ -1507,13 +1560,15 @@ export class AccountsPayableComponent implements OnInit {
   }
 
   submitReceive() {
-    if (!this.selectedPO) return;
+    if (!this.selectedPO || !this.receiveWarehouseId || !this.receiveLocationId) return;
     const lines = this.selectedPO.lines
       .map((l, i) => ({ lineId: l.id, qty: this.receiveQtys[i] || 0 }))
       .filter(r => r.qty > 0);
     if (!lines.length) return;
     const req = {
       lines,
+      warehouseId: this.receiveWarehouseId,
+      warehouseLocationId: this.receiveLocationId,
       receivedDate: this.receiveDate || undefined,
       notes: this.receiveNotes || undefined
     };
