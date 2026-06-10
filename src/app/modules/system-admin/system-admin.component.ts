@@ -3,6 +3,14 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
+import {
+  expandStoredPermissions,
+  PERMISSIONS,
+  PERMISSION_CATALOG,
+  permissionParts,
+  PermissionDefinition
+} from '../../core/security/permissions';
+import { AuthService } from '../../core/services/auth.service';
 
 interface UserDto {
   id: string; username: string; email: string; fullName: string;
@@ -28,9 +36,6 @@ interface OrgSummary {
   id: string; code: string; name: string; baseCurrency: string;
   status: string; createdAt: string;
 }
-
-const MODULES  = ['GL','AR','AP','PM','SysAdmin'];
-const ACTIONS  = ['Read','Write','Delete','Approve'];
 
 const CURRENCIES: { code: string; name: string }[] = [
   { code: 'USD', name: 'US Dollar' },
@@ -162,7 +167,8 @@ const TIMEZONES: { zone: string; label: string }[] = [
 
   <!-- Tabs -->
   <div class="tabs">
-    <button *ngFor="let t of tabs" class="tab" [class.active]="activeTab()===t" (click)="activeTab.set(t)">
+    <button *ngFor="let t of visibleTabs" class="tab" [class.active]="activeTab()===t"
+      (click)="activeTab.set(t)">
       {{ tabLabel(t) }}
     </button>
   </div>
@@ -171,7 +177,8 @@ const TIMEZONES: { zone: string; label: string }[] = [
   <div *ngIf="activeTab()==='users'" class="tab-content">
     <div class="section-header">
       <span>{{ users().length }} users</span>
-      <button class="btn-primary" (click)="showCreateUser = true">+ New User</button>
+      <button class="btn-primary" *ngIf="can(permissions.systemUsersManage)"
+        (click)="showCreateUser = true">+ New User</button>
     </div>
 
     <!-- Create User Form -->
@@ -204,7 +211,8 @@ const TIMEZONES: { zone: string; label: string }[] = [
     <table class="erp-table">
       <thead><tr>
         <th>Username</th><th>Full Name</th><th>Email</th>
-        <th>Status</th><th>Roles</th><th>Last Login</th><th>Actions</th>
+        <th>Status</th><th>Roles</th><th>Last Login</th>
+        <th *ngIf="can(permissions.systemUsersManage)">Actions</th>
       </tr></thead>
       <tbody>
         <tr *ngFor="let u of users()">
@@ -214,7 +222,7 @@ const TIMEZONES: { zone: string; label: string }[] = [
           <td><span class="badge" [class]="'badge-'+u.status.toLowerCase()">{{ u.status }}</span></td>
           <td>{{ u.roles.join(', ') }}</td>
           <td>{{ u.lastLoginAt ? (u.lastLoginAt | date:'short') : 'Never' }}</td>
-          <td class="actions">
+          <td class="actions" *ngIf="can(permissions.systemUsersManage)">
             <button class="icon-btn" *ngIf="u.status !== 'Active'"   (click)="activateUser(u.id)" title="Activate">✅</button>
             <button class="icon-btn" *ngIf="u.status === 'Active'"   (click)="deactivateUser(u.id)" title="Deactivate">⏸</button>
             <button class="icon-btn" (click)="openResetPw(u)" title="Reset Password">🔑</button>
@@ -240,7 +248,8 @@ const TIMEZONES: { zone: string; label: string }[] = [
   <div *ngIf="activeTab()==='roles'" class="tab-content">
     <div class="section-header">
       <span>{{ roles().length }} roles</span>
-      <button class="btn-primary" (click)="openCreateRole()">+ New Role</button>
+      <button class="btn-primary" *ngIf="can(permissions.systemRolesManage)"
+        (click)="openCreateRole()">+ New Role</button>
     </div>
 
     <!-- Role editor modal -->
@@ -251,21 +260,26 @@ const TIMEZONES: { zone: string; label: string }[] = [
           <label>Name<input [(ngModel)]="editingRole.name" /></label>
           <label>Description<input [(ngModel)]="editingRole.description" /></label>
         </div>
-        <h4 style="margin-top:16px;color:#94a3b8">Permissions</h4>
+        <h4 style="margin-top:16px;color:#64748b">Capabilities</h4>
         <table class="perm-matrix">
           <thead>
             <tr>
-              <th>Module</th>
-              <th *ngFor="let a of actions">{{ a }}</th>
+              <th>Business area</th>
+              <th>Capability</th>
+              <th>Granted</th>
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let m of modules">
-              <td>{{ m }}</td>
-              <td *ngFor="let a of actions">
+            <tr *ngFor="let p of permissionCatalog">
+              <td>{{ p.area }}</td>
+              <td>
+                <strong>{{ p.label }}</strong>
+                <div class="role-desc">{{ p.description }}</div>
+              </td>
+              <td>
                 <input type="checkbox"
-                  [checked]="hasEditPerm(m, a)"
-                  (change)="toggleEditPerm(m, a, $event)" />
+                  [checked]="hasEditPerm(p.key)"
+                  (change)="toggleEditPerm(p.key, $event)" />
               </td>
             </tr>
           </tbody>
@@ -282,8 +296,10 @@ const TIMEZONES: { zone: string; label: string }[] = [
         <div class="role-card-header">
           <strong>{{ r.name }}</strong>
           <span class="badge badge-system" *ngIf="r.isSystemRole">System</span>
-          <button class="icon-btn" (click)="openEditRole(r)">✏️</button>
-          <button class="icon-btn" *ngIf="!r.isSystemRole" (click)="deleteRole(r.id)">🗑️</button>
+          <button class="icon-btn" *ngIf="can(permissions.systemRolesManage)"
+            (click)="openEditRole(r)">✏️</button>
+          <button class="icon-btn" *ngIf="can(permissions.systemRolesManage) && !r.isSystemRole"
+            (click)="deleteRole(r.id)">🗑️</button>
         </div>
         <p class="role-desc">{{ r.description }}</p>
         <div class="perm-chips">
@@ -549,11 +565,10 @@ const TIMEZONES: { zone: string; label: string }[] = [
 })
 export class SystemAdminComponent implements OnInit {
   private base = environment.apiUrl;
+  readonly permissions = PERMISSIONS;
 
-  tabs       = ['users','roles','audit','org','orgs'] as const;
   activeTab  = signal<'users'|'roles'|'audit'|'org'|'orgs'>('users');
-  modules    = MODULES;
-  actions    = ACTIONS;
+  permissionCatalog: PermissionDefinition[] = PERMISSION_CATALOG;
   currencies = CURRENCIES;
   timezones  = TIMEZONES;
 
@@ -579,15 +594,30 @@ export class SystemAdminComponent implements OnInit {
   orgForm: Partial<OrgSettings> = {};
   orgSaved = false;
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, public auth: AuthService) {}
 
   ngOnInit() {
-    this.loadUsers();
-    this.loadRoles();
-    this.loadAudit();
-    this.loadOrgSettings();
-    this.loadAllOrgs();
+    const firstTab = this.visibleTabs[0];
+    if (firstTab) this.activeTab.set(firstTab);
+    if (this.can(PERMISSIONS.systemUsersView)) this.loadUsers();
+    if (this.can(PERMISSIONS.systemRolesView)) this.loadRoles();
+    if (this.can(PERMISSIONS.systemAuditView)) this.loadAudit();
+    if (this.can(PERMISSIONS.systemSettingsManage)) {
+      this.loadOrgSettings();
+      this.loadAllOrgs();
+    }
   }
+
+  get visibleTabs(): ('users'|'roles'|'audit'|'org'|'orgs')[] {
+    const tabs: ('users'|'roles'|'audit'|'org'|'orgs')[] = [];
+    if (this.can(PERMISSIONS.systemUsersView)) tabs.push('users');
+    if (this.can(PERMISSIONS.systemRolesView)) tabs.push('roles');
+    if (this.can(PERMISSIONS.systemAuditView)) tabs.push('audit');
+    if (this.can(PERMISSIONS.systemSettingsManage)) tabs.push('org', 'orgs');
+    return tabs;
+  }
+
+  can(permission: string) { return this.auth.hasPermission(permission); }
 
   tabLabel(t: string) {
     return { users: '👤 Users', roles: '🔑 Roles', audit: '📋 Audit Log', org: '🏢 Org Settings', orgs: '🏛 Organizations' }[t] ?? t;
@@ -646,20 +676,25 @@ export class SystemAdminComponent implements OnInit {
     this.editingRole = { id: '', name: '', description: '', permissions: [] };
   }
   openEditRole(r: RoleDto) {
+    const keys = expandStoredPermissions(r.permissions, r.name === 'Admin');
     this.editingRole = { id: r.id, name: r.name, description: r.description,
-      permissions: r.permissions.map(p => ({ module: p.module, action: p.action })) };
+      permissions: keys.map(permissionParts) };
   }
 
-  hasEditPerm(m: string, a: string) {
-    return this.editingRole?.permissions?.some((p: any) => p.module === m && p.action === a) ?? false;
+  hasEditPerm(key: string) {
+    const permission = permissionParts(key);
+    return this.editingRole?.permissions?.some((p: any) =>
+      p.module === permission.module && p.action === permission.action) ?? false;
   }
-  toggleEditPerm(m: string, a: string, ev: Event) {
+  toggleEditPerm(key: string, ev: Event) {
+    const permission = permissionParts(key);
     const checked = (ev.target as HTMLInputElement).checked;
     if (checked) {
-      this.editingRole.permissions = [...this.editingRole.permissions, { module: m, action: a }];
+      this.editingRole.permissions = [...this.editingRole.permissions, permission];
     } else {
       this.editingRole.permissions = this.editingRole.permissions
-        .filter((p: any) => !(p.module === m && p.action === a));
+        .filter((p: any) =>
+          !(p.module === permission.module && p.action === permission.action));
     }
   }
 

@@ -2,6 +2,8 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
+import { PERMISSIONS } from '../../core/security/permissions';
 import { Customer, CustomerAddress, CustomerContact, CustomerLedger, SalesOrderSummary, SalesOrder, SalesOrderLine, ARInvoice, ARAgingReport, VariantLookup } from '../../core/models/erp.models';
 
 type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | 'creditnotes';
@@ -239,7 +241,8 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | '
         <option value="">All Statuses</option>
         <option *ngFor="let s of soStatuses" [value]="s">{{ s }}</option>
       </select>
-      <button class="btn-primary" (click)="showCreateSO = true">+ New Order</button>
+      <button class="btn-primary" *ngIf="auth.hasPermission(permissions.arSalesOrderManage)"
+        (click)="showCreateSO = true">+ New Order</button>
     </div>
     <div *ngIf="showCreateSO" class="form-card">
       <div class="form-title">New Sales Order</div>
@@ -328,9 +331,9 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | '
             <button *ngIf="selectedOrder.status === 'Draft' && !selectedOrder.workflowInstanceId" class="btn-ghost-sm" (click)="submitSOForApproval(selectedOrder.id)">📤 Submit for Approval</button>
             <button *ngIf="selectedOrder.status === 'PendingApproval'" class="btn-primary-sm" (click)="approveSOWorkflow(selectedOrder.id)">✅ Approve</button>
             <button *ngIf="selectedOrder.status === 'PendingApproval'" class="btn-danger-sm" (click)="rejectSOWorkflow(selectedOrder.id)">❌ Reject</button>
-            <button *ngIf="selectedOrder.status === 'Draft' && !selectedOrder.workflowInstanceId" class="btn-primary-sm" (click)="showConfirmOptions = true">Confirm</button>
-            <button *ngIf="selectedOrder.status === 'Confirmed'" class="btn-primary-sm" (click)="soAction('picking')">Start Picking</button>
-            <button *ngIf="['Picking','PartiallyShipped'].includes(selectedOrder.status)" class="btn-primary-sm" (click)="openShipment()">Ship</button>
+            <button *ngIf="auth.hasPermission(permissions.arSalesOrderConfirm) && selectedOrder.status === 'Draft' && !selectedOrder.workflowInstanceId" class="btn-primary-sm" (click)="showConfirmOptions = true">Confirm</button>
+            <button *ngIf="auth.hasPermission(permissions.arSalesOrderShip) && selectedOrder.status === 'Confirmed'" class="btn-primary-sm" (click)="soAction('picking')">Start Picking</button>
+            <button *ngIf="auth.hasPermission(permissions.arSalesOrderShip) && ['Picking','PartiallyShipped'].includes(selectedOrder.status)" class="btn-primary-sm" (click)="openShipment()">Ship</button>
             <button *ngIf="selectedOrder.status === 'Shipped'" class="btn-primary-sm" (click)="soConfirmDelivery(selectedOrder.id)">📦 Confirm Delivery</button>
             <button *ngIf="selectedOrder.status === 'Shipped'" class="btn-primary-sm" (click)="soGenerateInvoice()">Generate Invoice</button>
             <button *ngIf="['Draft','Confirmed','Picking'].includes(selectedOrder.status) && selectedOrder.status !== 'PendingApproval'" class="btn-danger-sm" (click)="soAction('cancel')">Cancel</button>
@@ -946,6 +949,7 @@ type Tab = 'customers' | 'salesorders' | 'invoices' | 'aging' | 'quotations' | '
   `]
 })
 export class AccountsReceivableComponent implements OnInit {
+  readonly permissions = PERMISSIONS;
   activeTab: Tab = 'customers';
   tabs = [
     { id: 'customers' as Tab, label: 'Customers', icon: '👥' },
@@ -1119,7 +1123,7 @@ export class AccountsReceivableComponent implements OnInit {
     return this.creditNotes.filter(cn => !q || cn.creditNoteNumber.toLowerCase().includes(q) || cn.customerName.toLowerCase().includes(q));
   }
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, public auth: AuthService) {}
 
   ngOnInit() {
     this.api.getCustomers().subscribe(d => this.customers = d);
