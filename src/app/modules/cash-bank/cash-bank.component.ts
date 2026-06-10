@@ -6,6 +6,19 @@ import { OrgService } from '../../core/services/org.service';
 
 type Tab = 'accounts' | 'transactions' | 'reconciliation' | 'journals';
 
+const FALLBACK_CURRENCIES = [
+  { code: 'USD', name: 'US Dollar' },
+  { code: 'CAD', name: 'Canadian Dollar' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'GBP', name: 'British Pound' },
+  { code: 'AUD', name: 'Australian Dollar' },
+  { code: 'JPY', name: 'Japanese Yen' },
+  { code: 'CHF', name: 'Swiss Franc' },
+  { code: 'CNY', name: 'Chinese Yuan' },
+  { code: 'INR', name: 'Indian Rupee' },
+  { code: 'MXN', name: 'Mexican Peso' }
+];
+
 @Component({
   selector: 'app-cash-bank',
   standalone: true,
@@ -384,23 +397,53 @@ type Tab = 'accounts' | 'transactions' | 'reconciliation' | 'journals';
 </div>
   `,
   styles: [`
-    .module-container { padding: 24px; max-width: 1400px; margin: 0 auto; }
-    .module-header h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 12px; }
+    .module-container {
+      padding: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+      color: #0f172a;
+      --primary: #1d4ed8;
+      --primary-hover: #1e40af;
+      --surface: #ffffff;
+      --surface-muted: #f8fafc;
+      --border: #dbe3ee;
+      --text: #0f172a;
+      --text-secondary: #64748b;
+    }
+    .module-header h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 12px; color: #0f172a; }
     .tab-bar { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
-    .tab-btn { padding: 8px 18px; border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--text-secondary); }
+    .tab-btn { padding: 8px 18px; border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--text-secondary); }
+    .tab-btn:hover { color: var(--primary); }
     .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
     .tab-content { display: flex; flex-direction: column; gap: 16px; }
     .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .search-input { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
     .filter-select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
-    .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
-    .form-title { font-weight: 600; font-size: 1rem; margin-bottom: 14px; }
-    .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+    .form-title { font-weight: 700; font-size: 1rem; margin-bottom: 16px; color: #0f172a; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 18px; }
     .col-span-2 { grid-column: span 2; }
-    .form-field { display: flex; flex-direction: column; gap: 4px; }
-    .form-field label { font-size: 0.78rem; color: var(--text-secondary); }
-    .form-field input, .form-field select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
-    .form-actions { display: flex; gap: 10px; }
+    .form-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .form-field label { font-size: 0.78rem; font-weight: 600; color: #475569; }
+    .form-field input, .form-field select {
+      width: 100%;
+      min-height: 38px;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #0f172a;
+      font: inherit;
+    }
+    .form-field input::placeholder { color: #94a3b8; }
+    .form-field input:focus, .form-field select:focus, .search-input:focus, .filter-select:focus {
+      outline: 2px solid #bfdbfe;
+      outline-offset: 0;
+      border-color: #2563eb;
+    }
+    .form-field select option { color: #0f172a; background: #ffffff; }
+    .form-actions { display: flex; gap: 10px; align-items: center; }
     .list-panel { display: flex; flex-direction: column; gap: 6px; max-height: 400px; overflow-y: auto; }
     .list-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: background 0.15s; background: var(--surface); }
     .list-row:hover, .list-row.active { background: var(--primary-light, #e8f0fe); border-color: var(--primary); }
@@ -426,9 +469,10 @@ type Tab = 'accounts' | 'transactions' | 'reconciliation' | 'journals';
     .data-table th { font-weight: 600; color: var(--text-secondary); font-size: 0.8rem; }
     .data-table td.amount { text-align: right; font-variant-numeric: tabular-nums; }
     .add-line-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-    .line-input { flex: 1; min-width: 150px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
-    .line-input-sm { width: 100px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
-    .btn-primary { padding: 8px 18px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .line-input { flex: 1; min-width: 150px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text); }
+    .line-input-sm { width: 100px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text); }
+    .btn-primary { padding: 8px 18px; background: var(--primary); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
     .btn-secondary { padding: 8px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--text); }
     .btn-success { padding: 8px 18px; background: #16a34a; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
     .btn-danger { padding: 8px 18px; background: #dc2626; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
@@ -440,6 +484,11 @@ type Tab = 'accounts' | 'transactions' | 'reconciliation' | 'journals';
     .status-active, .status-completed, .status-posted { background: #dcfce7; color: #166534; }
     .status-inactive, .status-voided, .status-cancelled { background: #f3f4f6; color: #6b7280; }
     .status-frozen, .status-pending, .status-draft, .status-inprogress { background: #fef9c3; color: #854d0e; }
+    @media (max-width: 700px) {
+      .module-container { padding: 16px; }
+      .toolbar > * { width: 100%; }
+      .col-span-2 { grid-column: span 1; }
+    }
   `]
 })
 export class CashBankComponent implements OnInit {
@@ -517,8 +566,22 @@ export class CashBankComponent implements OnInit {
 
   ngOnInit() {
     this.loadAccounts();
-    this.api.getCurrencies().subscribe({ next: r => this.currencies = r, error: () => {} });
+    this.loadCurrencies();
     this.api.getAccounts().subscribe({ next: r => this.glAccounts = r, error: () => {} });
+  }
+
+  loadCurrencies() {
+    this.api.getCurrencies(true).subscribe({
+      next: rows => this.applyCurrencies(rows),
+      error: () => this.applyCurrencies([])
+    });
+  }
+
+  private applyCurrencies(rows: any[]) {
+    this.currencies = rows.length ? rows : FALLBACK_CURRENCIES;
+    if (!this.currencies.some(currency => currency.code === this.acctForm.currency)) {
+      this.acctForm.currency = this.currencies[0]?.code || 'USD';
+    }
   }
 
   setTab(t: Tab) {
