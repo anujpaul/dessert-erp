@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { OrgService } from '../../core/services/org.service';
+import { finalize, timeout } from 'rxjs/operators';
 
 @Component({
   selector: 'app-login',
@@ -106,11 +107,18 @@ export class LoginComponent {
     this.error.set('');
 
     this.auth.login({ username: this.username, password: this.password })
+      .pipe(
+        timeout(20000),
+        finalize(() => this.loading.set(false))
+      )
       .subscribe({
         next: () => { this.org.reloadIfEmpty(); this.router.navigate(['/dashboard']); },
         error: (err) => {
-          this.error.set(err?.error?.error ?? 'Login failed. Please try again.');
-          this.loading.set(false);
+          this.error.set(
+            err?.name === 'TimeoutError'
+              ? 'The server is taking too long to respond. Please try again.'
+              : err?.error?.error ?? 'Login failed. Please try again.'
+          );
         }
       });
   }
