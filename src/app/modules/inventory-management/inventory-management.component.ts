@@ -2,8 +2,6 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { AuthService } from '../../core/services/auth.service';
-import { PERMISSIONS } from '../../core/security/permissions';
 
 @Component({
   selector: 'app-inventory-management',
@@ -140,10 +138,8 @@ import { PERMISSIONS } from '../../core/security/permissions';
             </td>
             <td>
               <div class="action-btns">
-                <button class="btn-xs" *ngIf="auth.hasPermission(permissions.inventoryStockAdjust)"
-                  (click)="openAdjust(item)">Adjust</button>
-                <button class="btn-xs btn-outline" *ngIf="auth.hasPermission(permissions.inventoryStockAdjust)"
-                  (click)="openThresholds(item)">⚙</button>
+                <button class="btn-xs" (click)="openAdjust(item)">Adjust</button>
+                <button class="btn-xs btn-outline" (click)="openThresholds(item)">⚙</button>
                 <button class="btn-xs btn-ghost" (click)="viewTransactions(item)">Ledger</button>
               </div>
             </td>
@@ -640,7 +636,6 @@ import { PERMISSIONS } from '../../core/security/permissions';
   `]
 })
 export class InventoryManagementComponent implements OnInit {
-  readonly permissions = PERMISSIONS;
   activeTab = 'items';
 
   summary: any = null;
@@ -685,7 +680,7 @@ export class InventoryManagementComponent implements OnInit {
   thresholdForm = { reorderPoint: 0, minimumStock: 0, maximumStock: 100, location: '' };
   savingThresholds = false;
 
-  constructor(private api: ApiService, public auth: AuthService) {}
+  constructor(private api: ApiService) {}
 
   ngOnInit() { this.loadAll(); }
 

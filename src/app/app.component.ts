@@ -5,7 +5,6 @@ import { FormsModule } from '@angular/forms';
 import { OrgService } from './core/services/org.service';
 import { ApiService } from './core/services/api.service';
 import { AuthService } from './core/services/auth.service';
-import { PERMISSIONS } from './core/security/permissions';
 
 const CURRENCIES = [
   { code: 'USD', name: 'US Dollar' }, { code: 'EUR', name: 'Euro' },
@@ -28,8 +27,7 @@ const CURRENCIES = [
 interface NavGroup {
   label: string;
   icon: string;
-  permission: string;
-  items: { label: string; route: string; icon: string; permission?: string }[];
+  items: { label: string; route: string; icon: string }[];
 }
 
 @Component({
@@ -61,8 +59,7 @@ interface NavGroup {
           </option>
         </select>
       </div>
-      <button class="org-new-btn" *ngIf="auth.hasPermission(permissions.systemSettingsManage)"
-        (click)="showNewOrg = !showNewOrg">+ New Organization</button>
+      <button class="org-new-btn" (click)="showNewOrg = !showNewOrg">+ New Organization</button>
     </div>
     <div class="org-icon-hint" *ngIf="collapsed()" [title]="orgService.activeOrg()?.name ?? ''">🏢</div>
 
@@ -84,7 +81,7 @@ interface NavGroup {
         <span class="nl">Dashboard</span>
       </a>
 
-      <ng-container *ngFor="let g of visibleNavGroups; let gi = index">
+      <ng-container *ngFor="let g of navGroups; let gi = index">
         <div class="nav-group">
           <button class="group-toggle" (click)="toggleGroup(gi)" [class.open]="openGroups[gi]">
             <span class="ni">{{ g.icon }}</span>
@@ -103,8 +100,7 @@ interface NavGroup {
         </div>
       </ng-container>
 
-      <a *ngIf="auth.hasRole('Admin') && auth.hasPermission(permissions.systemAccess)"
-        routerLink="/system-admin" routerLinkActive="active" class="nav-single">
+      <a routerLink="/system-admin" routerLinkActive="active" class="nav-single">
         <span class="ni">⚙️</span>
         <span class="nl">System Admin</span>
       </a>
@@ -258,7 +254,6 @@ interface NavGroup {
   `]
 })
 export class AppComponent {
-  readonly permissions = PERMISSIONS;
   collapsed  = signal(false);
   openGroups: boolean[] = [true, true, true, true];
   currencies = CURRENCIES;
@@ -269,43 +264,41 @@ export class AppComponent {
   newOrgCurrency = 'USD';
 
   navGroups: NavGroup[] = [
-    { label: 'General Ledger', icon: '📒', permission: PERMISSIONS.glAccess,
+    { label: 'General Ledger', icon: '📒',
       items: [{ label: 'Overview', route: '/general-ledger', icon: '📋' }] },
-    { label: 'Accounts Receivable', icon: '💰', permission: PERMISSIONS.arAccess,
+    { label: 'Accounts Receivable', icon: '💰',
       items: [{ label: 'Overview', route: '/accounts-receivable', icon: '📋' }] },
-    { label: 'Accounts Payable', icon: '🧾', permission: PERMISSIONS.apAccess,
+    { label: 'Accounts Payable', icon: '🧾',
       items: [{ label: 'Overview', route: '/accounts-payable', icon: '📋' }] },
-    { label: 'Product Management', icon: '🛍️', permission: PERMISSIONS.productAccess,
+    { label: 'Product Management', icon: '🛍️',
       items: [{ label: 'Catalog & Inventory', route: '/product-management', icon: '📦' }] },
-    { label: 'Data Management', icon: '📂', permission: PERMISSIONS.dataAccess,
+    { label: 'Data Management', icon: '📂',
       items: [
         { label: 'Import / Export', route: '/data-management', icon: '🔄' },
         { label: 'Batch Jobs',      route: '/batch-jobs',      icon: '⚙️' }
       ] },
-    { label: 'OmniChannel', icon: '🌐', permission: PERMISSIONS.omniChannelAccess,
+    { label: 'OmniChannel', icon: '🌐',
       items: [{ label: 'Orders & Fulfillment', route: '/omnichannel', icon: '🛒' }] },
-    { label: 'Marketing', icon: '📣', permission: PERMISSIONS.marketingAccess,
+    { label: 'Marketing', icon: '📣',
       items: [
         { label: 'Campaigns & Loyalty', route: '/marketing',          icon: '🎯' },
         { label: 'Trade Agreements',    route: '/trade-agreements',   icon: '📋' }
       ] },
-    { label: 'Inventory', icon: '📦', permission: PERMISSIONS.inventoryAccess,
+    { label: 'Inventory', icon: '📦',
       items: [
         { label: 'Inventory Management', route: '/inventory-management',  icon: '🗃️' },
         { label: 'Warehouse Management', route: '/warehouse-management',  icon: '🏭' }
       ] },
-    { label: 'Approvals & Expenses', icon: '✅', permission: PERMISSIONS.workflowAccess,
+    { label: 'Approvals & Expenses', icon: '✅',
       items: [
-        { label: 'Approval Inbox', route: '/approval-inbox', icon: '📥',
-          permission: PERMISSIONS.workflowAccess },
-        { label: 'Expense Management', route: '/expense-management', icon: '💳',
-          permission: PERMISSIONS.expenseAccess }
+        { label: 'Approval Inbox',     route: '/approval-inbox',     icon: '📥' },
+        { label: 'Expense Management', route: '/expense-management', icon: '💳' }
       ] },
-    { label: 'Cash & Bank', icon: '🏦', permission: PERMISSIONS.cashBankAccess,
+    { label: 'Cash & Bank', icon: '🏦',
       items: [
         { label: 'Cash & Bank Management', route: '/cash-bank', icon: '💰' }
       ] },
-    { label: 'Fixed Assets', icon: '📦', permission: PERMISSIONS.fixedAssetsAccess,
+    { label: 'Fixed Assets', icon: '📦',
       items: [
         { label: 'Fixed Assets', route: '/fixed-assets', icon: '🏭' }
       ] }
@@ -317,21 +310,6 @@ export class AppComponent {
     private api: ApiService,
     private router: Router
   ) {}
-
-  get visibleNavGroups(): NavGroup[] {
-    return this.navGroups
-      .filter(group =>
-        this.auth.hasPermission(group.permission) ||
-        group.items.some(item => !!item.permission && this.auth.hasPermission(item.permission)))
-      .map(group => ({
-        ...group,
-        items: group.items.filter(item =>
-          item.permission
-            ? this.auth.hasPermission(item.permission)
-            : this.auth.hasPermission(group.permission))
-      }))
-      .filter(group => group.items.length > 0);
-  }
 
   toggleGroup(i: number) { this.openGroups[i] = !this.openGroups[i]; }
   logout() { this.auth.logout(); }
