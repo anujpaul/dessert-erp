@@ -1,10 +1,7 @@
 import { HttpInterceptorFn } from '@angular/common/http';
-import { inject } from '@angular/core';
-import { OrgService } from '../services/org.service';
 
 export const orgInterceptor: HttpInterceptorFn = (req, next) => {
-  const orgService = inject(OrgService);
-  const orgId = orgService.organizationId;
+  const orgId = sessionStorage.getItem('erp_active_org');
 
   if (!orgId || req.url.includes('/organizations')) {
     return next(req);

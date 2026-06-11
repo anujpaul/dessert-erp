@@ -7,7 +7,7 @@ import { BatchJobConfig, BatchJobType } from '../../core/models/erp.models';
 type ViewMode = 'list' | 'create' | 'edit';
 
 const JOB_TYPES: BatchJobType[] = [
-  'ImportSalesOrder', 'ImportPurchaseOrder', 'ImportVendor', 'ImportProduct',
+  'ImportSalesOrder', 'ImportPurchaseOrder', 'ImportVendor', 'ImportProduct', 'ImportRetailTransaction',
   'ExportSalesOrder', 'ExportPurchaseOrder', 'ExportVendor', 'ExportProduct',
 ];
 

@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { environment } from '../../../environments/environment';
 import {
   Organization,
-  ImportJob, ImportJobRow, RowResult, BatchJobConfig,
+  ImportJob, ImportJobRow, RowResult, BatchJobConfig, RetailStatement, RetailSettlement,
   Category, Brand, ProductSummary, ProductDetail, InventoryDto, VariantLookup,
   FiscalYear, FiscalPeriod, AccountType, Account, JournalEntry, TrialBalanceLine,
   Customer, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport,
@@ -467,6 +467,21 @@ export class ApiService {
     });
     return this.http.get<any>(`${this.base}/inventory/items`, { params });
   };
+
+  uploadRetailPosLog = (file: File, post = true) => {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{
+      transactionId: string; statementId: string; transactionNumber: string;
+      duplicate: boolean; matchedLines: number; unmatchedLines: number;
+    }>(`${this.base}/retail-statements/import?post=${post}`, form);
+  };
+  getRetailStatements = () =>
+    this.http.get<RetailStatement[]>(`${this.base}/retail-statements?pageSize=200`);
+  getRetailSettlements = (status?: string) =>
+    this.http.get<RetailSettlement[]>(`${this.base}/retail-statements/settlements${status ? `?status=${status}` : ''}`);
+  postRetailStatement = (id: string) =>
+    this.http.post(`${this.base}/retail-statements/${id}/post`, {});
 
   getInventoryFilterOptions = () =>
     this.http.get<any>(`${this.base}/inventory/filter-options`);

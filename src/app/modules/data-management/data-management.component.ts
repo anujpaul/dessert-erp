@@ -2,12 +2,12 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { ImportJob, ImportJobRow, RowResult } from '../../core/models/erp.models';
+import { ImportJob, ImportJobRow, RowResult, RetailStatement, RetailSettlement } from '../../core/models/erp.models';
 
-type Tab = 'import' | 'export' | 'history';
+type Tab = 'import' | 'retail' | 'export' | 'history';
 type ImportMode = 'immediate' | 'staged';
 
-const ENTITY_TYPES = ['Vendor', 'Product', 'SalesOrder', 'PurchaseOrder'];
+const ENTITY_TYPES = ['Vendor', 'Product', 'SalesOrder', 'PurchaseOrder', 'RetailTransaction'];
 const FILE_FORMATS  = ['Csv', 'Json', 'Xml'];
 
 @Component({
@@ -25,6 +25,7 @@ const FILE_FORMATS  = ['Csv', 'Json', 'Xml'];
 
   <div class="tabs">
     <button class="tab" [class.active]="activeTab === 'import'"  (click)="setTab('import')">⬆️ Import</button>
+    <button class="tab" [class.active]="activeTab === 'retail'" (click)="setTab('retail')">Retail Statements</button>
     <button class="tab" [class.active]="activeTab === 'export'"  (click)="setTab('export')">⬇️ Export</button>
     <button class="tab" [class.active]="activeTab === 'history'" (click)="setTab('history')">📋 History</button>
   </div>
@@ -50,7 +51,7 @@ const FILE_FORMATS  = ['Csv', 'Json', 'Xml'];
       </div>
 
       <!-- Import mode -->
-      <div class="mode-toggle">
+      <div class="mode-toggle" *ngIf="importEntityType !== 'RetailTransaction'">
         <label class="mode-opt" [class.active]="importMode === 'immediate'" (click)="importMode = 'immediate'">
           <span class="mode-radio"></span>
           <div>
@@ -67,7 +68,7 @@ const FILE_FORMATS  = ['Csv', 'Json', 'Xml'];
         </label>
       </div>
 
-      <div class="template-row">
+      <div class="template-row" *ngIf="importEntityType !== 'RetailTransaction'">
         <span class="muted">Need a template? </span>
         <button class="btn-link" (click)="downloadTemplate()">⬇️ Download {{ importEntityType }} {{ importFileFormat }} template</button>
       </div>
@@ -170,6 +171,46 @@ const FILE_FORMATS  = ['Csv', 'Json', 'Xml'];
   </div>
 
   <!-- ═══════════════════════════════ EXPORT ═══════════════════════════════ -->
+  <div *ngIf="activeTab === 'retail'" class="tab-content">
+    <div class="card">
+      <div class="card-title">Retail Statement Posting</div>
+      <button class="btn-primary" (click)="loadRetail()">Refresh</button>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Statement</th><th>Store / Date</th><th>Transactions</th><th>Net Sales</th><th>Tax</th><th>Total</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            <tr *ngFor="let s of retailStatements()">
+              <td><strong>{{ s.statementNumber }}</strong><br><span class="muted">{{ s.currency }}</span></td>
+              <td>{{ s.storeName }}<br><span class="muted">{{ s.businessDate | date:'mediumDate' }}</span></td>
+              <td>{{ s.transactionCount }}</td>
+              <td>{{ s.netSales - s.discountTotal | currency:s.currency }}</td>
+              <td>{{ s.taxTotal | currency:s.currency }}</td>
+              <td>{{ s.grandTotal | currency:s.currency }}</td>
+              <td>{{ s.status }}<div class="error-summary" *ngIf="s.postingError">{{ s.postingError }}</div></td>
+              <td><button class="btn-link" *ngIf="s.status !== 'Posted'" (click)="postStatement(s)">Post</button></td>
+            </tr>
+            <tr *ngIf="retailStatements().length === 0"><td colspan="8" class="muted-center">No retail statements found.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Tender Settlements</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Statement</th><th>Method</th><th>Amount</th><th>Processor Ref</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let s of retailSettlements()">
+              <td>{{ s.statementNumber }}</td><td>{{ s.paymentMethod }}</td>
+              <td>{{ s.amount | currency:s.currency }}</td><td>{{ s.processorReference || '—' }}</td><td>{{ s.status }}</td>
+            </tr>
+            <tr *ngIf="retailSettlements().length === 0"><td colspan="5" class="muted-center">No tender settlements found.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div *ngIf="activeTab === 'export'" class="tab-content">
     <div class="card">
       <div class="card-title">Export Data to File</div>
@@ -406,6 +447,8 @@ export class DataManagementComponent implements OnInit {
 
   // History state
   jobs = signal<ImportJob[]>([]);
+  retailStatements = signal<RetailStatement[]>([]);
+  retailSettlements = signal<RetailSettlement[]>([]);
   selectedHistoryJob: ImportJob | null = null;
   historyRows: ImportJobRow[] = [];
 
@@ -416,10 +459,23 @@ export class DataManagementComponent implements OnInit {
   setTab(t: Tab) {
     this.activeTab = t;
     if (t === 'history') this.loadJobs();
+    if (t === 'retail') this.loadRetail();
   }
 
   loadJobs() {
     this.api.getImportJobs().subscribe(list => this.jobs.set(list));
+  }
+
+  loadRetail() {
+    this.api.getRetailStatements().subscribe(rows => this.retailStatements.set(rows));
+    this.api.getRetailSettlements().subscribe(rows => this.retailSettlements.set(rows));
+  }
+
+  postStatement(statement: RetailStatement) {
+    this.api.postRetailStatement(statement.id).subscribe({
+      next: () => this.loadRetail(),
+      error: err => alert('Posting failed: ' + (err.error?.error ?? err.message))
+    });
   }
 
   // ── File helpers ───────────────────────────────────────────────────────────
@@ -465,6 +521,29 @@ export class DataManagementComponent implements OnInit {
     this.stagedJob  = null;
     this.rowResults = [];
     this.stagedRows = [];
+
+    if (this.importEntityType === 'RetailTransaction') {
+      if (this.importFileFormat !== 'Xml') {
+        alert('Retail transaction POSLog imports require XML format.');
+        this.importing = false;
+        return;
+      }
+      this.api.uploadRetailPosLog(this.selectedFile, true).subscribe({
+        next: result => {
+          const lineResult = `${result.matchedLines} inventory line(s) matched, ${result.unmatchedLines} unmatched`;
+          alert(result.duplicate
+            ? `Transaction ${result.transactionNumber} was already imported.`
+            : `Retail transaction ${result.transactionNumber} imported and posted. ${lineResult}.`);
+          this.importing = false;
+          this.clearFile();
+        },
+        error: err => {
+          alert('Retail import failed: ' + (err.error?.error ?? err.message));
+          this.importing = false;
+        }
+      });
+      return;
+    }
 
     if (this.importMode === 'immediate') {
       this.api.uploadImport(this.selectedFile, this.importEntityType, this.importFileFormat).subscribe({

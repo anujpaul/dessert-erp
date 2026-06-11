@@ -36,7 +36,7 @@ export interface ImportJob {
 }
 // ── Batch Jobs ────────────────────────────────────────────────────────────────
 export type BatchJobType =
-  'ImportSalesOrder' | 'ImportPurchaseOrder' | 'ImportVendor' | 'ImportProduct' |
+  'ImportSalesOrder' | 'ImportPurchaseOrder' | 'ImportVendor' | 'ImportProduct' | 'ImportRetailTransaction' |
   'ExportSalesOrder' | 'ExportPurchaseOrder' | 'ExportVendor' | 'ExportProduct';
 
 export type BatchJobRunStatus = 'Never' | 'Running' | 'Success' | 'PartialSuccess' | 'Failed' | 'NoFilesFound';
@@ -102,6 +102,20 @@ export interface RetailSummary {
   totalTransactions: number; processedTransactions: number; failedTransactions: number;
   totalRevenue: number; totalDiscounts: number; totalTax: number;
   totalItemsSold: number; topStore: string;
+}
+
+export interface RetailStatement {
+  id: string; statementNumber: string; storeId: string; storeName: string;
+  businessDate: string; currency: string; status: string; transactionCount: number;
+  netSales: number; discountTotal: number; taxTotal: number; grandTotal: number;
+  costTotal: number; arInvoiceId?: string; arCreditNoteId?: string;
+  journalEntryId?: string; postedAt?: string; postingError?: string;
+}
+
+export interface RetailSettlement {
+  id: string; retailStatementId: string; statementNumber: string;
+  paymentMethod: string; amount: number; currency: string; status: string;
+  processorReference?: string; bankTransactionId?: string; settledAt?: string;
 }
 
 export interface BatchJobConfig {

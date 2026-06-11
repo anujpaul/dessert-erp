@@ -2,6 +2,8 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
+import { PERMISSIONS } from '../../core/security/permissions';
 import { Vendor, VendorAddress, VendorContact, VendorLedger, PurchaseOrderSummary, PurchaseOrder, Receipt, APInvoice, APAgingReport, VariantLookup, ThreeWayMatchResult } from '../../core/models/erp.models';
 
 type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' | 'proposals' | 'creditnotes';
@@ -27,7 +29,8 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
   <div *ngIf="activeTab === 'vendors'" class="tab-content">
     <div class="toolbar">
       <input [(ngModel)]="vendSearch" placeholder="Search vendors…" class="search-input" />
-      <button class="btn-primary" (click)="openCreateVend()">+ New Vendor</button>
+      <button class="btn-primary" *ngIf="auth.hasPermission(permissions.apVendorManage)"
+        (click)="openCreateVend()">+ New Vendor</button>
     </div>
 
     <div *ngIf="showVendForm" class="form-card">
@@ -244,7 +247,8 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
         <option value="">All Statuses</option>
         <option *ngFor="let s of poStatuses" [value]="s">{{ s }}</option>
       </select>
-      <button class="btn-primary" (click)="showCreatePO = true">+ New PO</button>
+      <button class="btn-primary" *ngIf="auth.hasPermission(permissions.apPurchaseOrderManage)"
+        (click)="showCreatePO = true">+ New PO</button>
     </div>
 
     <div *ngIf="showCreatePO" class="form-card">
@@ -298,9 +302,9 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
           <div class="detail-title">{{ selectedPO.poNumber }}</div>
           <div class="action-row">
             <!-- Send: only Draft -->
-            <button *ngIf="selectedPO.status === 'Draft'" class="btn-primary-sm" (click)="sendPO()">📤 Send to Vendor</button>
+            <button *ngIf="auth.hasPermission(permissions.apPurchaseOrderApprove) && selectedPO.status === 'Draft'" class="btn-primary-sm" (click)="sendPO()">📤 Send to Vendor</button>
             <!-- Receive: backend canReceive flag — works regardless of invoice state -->
-            <button *ngIf="selectedPO.canReceive" class="btn-primary-sm" (click)="openReceiveForm()">📥 Receive Goods</button>
+            <button *ngIf="auth.hasPermission(permissions.apPurchaseOrderReceive) && selectedPO.canReceive" class="btn-primary-sm" (click)="openReceiveForm()">📥 Receive Goods</button>
             <!-- Invoice: any received qty not yet fully invoiced -->
             <button *ngIf="hasReceivableToInvoice()" class="btn-primary-sm" (click)="generateAPInv()">🧾 Generate Invoice</button>
             <!-- Close: once fully invoiced -->
@@ -1115,6 +1119,7 @@ type Tab = 'vendors' | 'purchaseorders' | 'invoices' | 'aging' | 'requisitions' 
   `]
 })
 export class AccountsPayableComponent implements OnInit {
+  readonly permissions = PERMISSIONS;
   activeTab: Tab = 'vendors';
   tabs = [
     { id: 'vendors' as Tab, label: 'Vendors', icon: '🏭' },
@@ -1238,7 +1243,7 @@ export class AccountsPayableComponent implements OnInit {
     return this.apInvoices.filter(i => !q || i.invoiceNumber.toLowerCase().includes(q) || i.vendorName.toLowerCase().includes(q));
   }
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, public auth: AuthService) {}
 
   ngOnInit() {
     this.api.getVendors().subscribe(d => this.vendors = d);

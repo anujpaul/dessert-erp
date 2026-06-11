@@ -19,7 +19,9 @@ export class OrgService {
   get organizationId(): string | null { return this._activeId(); }
 
   constructor(private http: HttpClient) {
-    this.loadOrgs();
+    if (sessionStorage.getItem('erp_access_token')) {
+      this.loadOrgs();
+    }
   }
 
   loadOrgs() {

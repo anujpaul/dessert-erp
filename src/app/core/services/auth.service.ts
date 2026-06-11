@@ -8,7 +8,7 @@ export interface LoginRequest  { username: string; password: string; }
 export interface UserInfo {
   id: string; username: string; email: string; fullName: string;
   status: string; lastLoginAt: string | null;
-  roles: string[]; organizationId: string; createdAt: string;
+  roles: string[]; permissions: string[]; organizationId: string; createdAt: string;
 }
 export interface LoginResponse {
   accessToken: string; refreshToken: string; expiresAt: string; user: UserInfo;
@@ -28,6 +28,7 @@ export class AuthService {
   readonly user        = this._user.asReadonly();
   readonly isLoggedIn  = computed(() => !!this._user());
   readonly roles       = computed(() => this._user()?.roles ?? []);
+  readonly permissions = computed(() => this._user()?.permissions ?? []);
 
   constructor(private http: HttpClient, private router: Router) {}
 
@@ -57,6 +58,14 @@ export class AuthService {
 
   hasAnyRole(...roles: string[]) { return roles.some(r => this.roles().includes(r)); }
 
+  hasPermission(permission: string) {
+    return this.hasRole('Admin') || this.permissions().includes(permission);
+  }
+
+  hasAnyPermission(...permissions: string[]) {
+    return permissions.some(permission => this.hasPermission(permission));
+  }
+
   private handleAuthResponse(res: LoginResponse) {
     sessionStorage.setItem(ACCESS_KEY,  res.accessToken);
     sessionStorage.setItem(REFRESH_KEY, res.refreshToken);
@@ -75,6 +84,9 @@ export class AuthService {
 
   private loadUser(): UserInfo | null {
     const raw = sessionStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const user = JSON.parse(raw) as UserInfo;
+    user.permissions = Array.isArray(user.permissions) ? user.permissions : [];
+    return user;
   }
 }

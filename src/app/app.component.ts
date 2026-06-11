@@ -1,10 +1,11 @@
-import { Component, signal } from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { OrgService } from './core/services/org.service';
 import { ApiService } from './core/services/api.service';
 import { AuthService } from './core/services/auth.service';
+import { PERMISSIONS } from './core/security/permissions';
 
 const CURRENCIES = [
   { code: 'USD', name: 'US Dollar' }, { code: 'EUR', name: 'Euro' },
@@ -27,7 +28,8 @@ const CURRENCIES = [
 interface NavGroup {
   label: string;
   icon: string;
-  items: { label: string; route: string; icon: string }[];
+  permission: string;
+  items: { label: string; route: string; icon: string; permission?: string }[];
 }
 
 @Component({
@@ -59,7 +61,8 @@ interface NavGroup {
           </option>
         </select>
       </div>
-      <button class="org-new-btn" (click)="showNewOrg = !showNewOrg">+ New Organization</button>
+      <button class="org-new-btn" *ngIf="auth.hasPermission(permissions.systemSettingsManage)"
+        (click)="showNewOrg = !showNewOrg">+ New Organization</button>
     </div>
     <div class="org-icon-hint" *ngIf="collapsed()" [title]="orgService.activeOrg()?.name ?? ''">🏢</div>
 
@@ -81,7 +84,7 @@ interface NavGroup {
         <span class="nl">Dashboard</span>
       </a>
 
-      <ng-container *ngFor="let g of navGroups; let gi = index">
+      <ng-container *ngFor="let g of visibleNavGroups(); let gi = index">
         <div class="nav-group">
           <button class="group-toggle" (click)="toggleGroup(gi)" [class.open]="openGroups[gi]">
             <span class="ni">{{ g.icon }}</span>
@@ -100,7 +103,8 @@ interface NavGroup {
         </div>
       </ng-container>
 
-      <a routerLink="/system-admin" routerLinkActive="active" class="nav-single">
+      <a *ngIf="auth.hasRole('Admin') && auth.hasPermission(permissions.systemAccess)"
+        routerLink="/system-admin" routerLinkActive="active" class="nav-single">
         <span class="ni">⚙️</span>
         <span class="nl">System Admin</span>
       </a>
@@ -254,6 +258,7 @@ interface NavGroup {
   `]
 })
 export class AppComponent {
+  readonly permissions = PERMISSIONS;
   collapsed  = signal(false);
   openGroups: boolean[] = [true, true, true, true];
   currencies = CURRENCIES;
@@ -264,45 +269,62 @@ export class AppComponent {
   newOrgCurrency = 'USD';
 
   navGroups: NavGroup[] = [
-    { label: 'General Ledger', icon: '📒',
+    { label: 'General Ledger', icon: '📒', permission: PERMISSIONS.glAccess,
       items: [{ label: 'Overview', route: '/general-ledger', icon: '📋' }] },
-    { label: 'Accounts Receivable', icon: '💰',
+    { label: 'Accounts Receivable', icon: '💰', permission: PERMISSIONS.arAccess,
       items: [{ label: 'Overview', route: '/accounts-receivable', icon: '📋' }] },
-    { label: 'Accounts Payable', icon: '🧾',
+    { label: 'Accounts Payable', icon: '🧾', permission: PERMISSIONS.apAccess,
       items: [{ label: 'Overview', route: '/accounts-payable', icon: '📋' }] },
-    { label: 'Product Management', icon: '🛍️',
+    { label: 'Product Management', icon: '🛍️', permission: PERMISSIONS.productAccess,
       items: [{ label: 'Catalog & Inventory', route: '/product-management', icon: '📦' }] },
-    { label: 'Data Management', icon: '📂',
+    { label: 'Data Management', icon: '📂', permission: PERMISSIONS.dataAccess,
       items: [
         { label: 'Import / Export', route: '/data-management', icon: '🔄' },
         { label: 'Batch Jobs',      route: '/batch-jobs',      icon: '⚙️' }
       ] },
-    { label: 'OmniChannel', icon: '🌐',
+    { label: 'OmniChannel', icon: '🌐', permission: PERMISSIONS.omniChannelAccess,
       items: [{ label: 'Orders & Fulfillment', route: '/omnichannel', icon: '🛒' }] },
-    { label: 'Marketing', icon: '📣',
+    { label: 'Marketing', icon: '📣', permission: PERMISSIONS.marketingAccess,
       items: [
         { label: 'Campaigns & Loyalty', route: '/marketing',          icon: '🎯' },
         { label: 'Trade Agreements',    route: '/trade-agreements',   icon: '📋' }
       ] },
-    { label: 'Inventory', icon: '📦',
+    { label: 'Inventory', icon: '📦', permission: PERMISSIONS.inventoryAccess,
       items: [
         { label: 'Inventory Management', route: '/inventory-management',  icon: '🗃️' },
         { label: 'Warehouse Management', route: '/warehouse-management',  icon: '🏭' }
       ] },
-    { label: 'Approvals & Expenses', icon: '✅',
+    { label: 'Approvals & Expenses', icon: '✅', permission: PERMISSIONS.workflowAccess,
       items: [
-        { label: 'Approval Inbox',     route: '/approval-inbox',     icon: '📥' },
-        { label: 'Expense Management', route: '/expense-management', icon: '💳' }
+        { label: 'Approval Inbox', route: '/approval-inbox', icon: '📥',
+          permission: PERMISSIONS.workflowAccess },
+        { label: 'Expense Management', route: '/expense-management', icon: '💳',
+          permission: PERMISSIONS.expenseAccess }
       ] },
-    { label: 'Cash & Bank', icon: '🏦',
+    { label: 'Cash & Bank', icon: '🏦', permission: PERMISSIONS.cashBankAccess,
       items: [
         { label: 'Cash & Bank Management', route: '/cash-bank', icon: '💰' }
       ] },
-    { label: 'Fixed Assets', icon: '📦',
+    { label: 'Fixed Assets', icon: '📦', permission: PERMISSIONS.fixedAssetsAccess,
       items: [
         { label: 'Fixed Assets', route: '/fixed-assets', icon: '🏭' }
       ] }
   ];
+
+  readonly visibleNavGroups = computed<NavGroup[]>(() =>
+    this.navGroups
+      .filter(group =>
+        this.auth.hasPermission(group.permission) ||
+        group.items.some(item => !!item.permission && this.auth.hasPermission(item.permission)))
+      .map(group => ({
+        ...group,
+        items: group.items.filter(item =>
+          item.permission
+            ? this.auth.hasPermission(item.permission)
+            : this.auth.hasPermission(group.permission))
+      }))
+      .filter(group => group.items.length > 0)
+  );
 
   constructor(
     public  orgService: OrgService,
