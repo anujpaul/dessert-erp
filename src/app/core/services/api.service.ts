@@ -687,6 +687,18 @@ export class ApiService {
   updateWarehouse = (id: string, body: any) =>
     this.http.put<any>(`${this.base}/warehouse/${id}`, body);
 
+  getWarehouseTypes = () =>
+    this.http.get<any[]>(`${this.base}/warehouse/types`);
+
+  createWarehouseType = (body: any) =>
+    this.http.post<any>(`${this.base}/warehouse/types`, body);
+
+  getOperationalSites = () =>
+    this.http.get<any[]>(`${this.base}/warehouse/sites`);
+
+  createOperationalSite = (body: any) =>
+    this.http.post<any>(`${this.base}/warehouse/sites`, body);
+
   activateWarehouse = (id: string) =>
     this.http.post<any>(`${this.base}/warehouse/${id}/activate`, {});
 

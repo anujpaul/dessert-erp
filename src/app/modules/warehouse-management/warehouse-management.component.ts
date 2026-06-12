@@ -58,13 +58,15 @@ import { OrgService } from '../../core/services/org.service';
 
     <table class="data-table">
       <thead><tr>
-        <th>Code</th><th>Name</th><th>City</th><th>Country</th>
+        <th>Code</th><th>Name</th><th>Type</th><th>Site</th><th>City</th><th>Country</th>
         <th>Locations</th><th>Default</th><th>Status</th><th>Actions</th>
       </tr></thead>
       <tbody>
         <tr *ngFor="let w of filteredWarehouses">
           <td><strong>{{ w.code }}</strong></td>
           <td>{{ w.name }}</td>
+          <td>{{ w.warehouseTypeName || '—' }}</td>
+          <td>{{ w.siteName || '—' }}<br><span class="muted" *ngIf="w.siteCapabilities">{{ w.siteCapabilities }}</span></td>
           <td>{{ w.city || '—' }}</td>
           <td>{{ w.country || '—' }}</td>
           <td>{{ w.locationCount }}</td>
@@ -82,7 +84,7 @@ import { OrgService } from '../../core/services/org.service';
           </td>
         </tr>
         <tr *ngIf="filteredWarehouses.length===0">
-          <td colspan="8" class="empty-state">No warehouses found.</td>
+          <td colspan="10" class="empty-state">No warehouses found.</td>
         </tr>
       </tbody>
     </table>
@@ -357,6 +359,49 @@ import { OrgService } from '../../core/services/org.service';
             <input [(ngModel)]="whForm.name" placeholder="Main Warehouse">
           </div>
           <div class="form-group">
+            <label>Warehouse Type *</label>
+            <select [(ngModel)]="whForm.warehouseTypeId">
+              <option value="">Select type</option>
+              <option *ngFor="let type of warehouseTypes" [value]="type.id">{{ type.name }}</option>
+            </select>
+            <button class="btn-link" (click)="showNewType = !showNewType">
+              {{ showNewType ? 'Cancel new type' : '+ New type' }}
+            </button>
+          </div>
+          <div class="form-group">
+            <label>Site</label>
+            <select [(ngModel)]="whForm.siteId">
+              <option value="">No site</option>
+              <option *ngFor="let site of operationalSites" [value]="site.id">
+                {{ site.code }} — {{ site.name }} ({{ site.capabilities }})
+              </option>
+            </select>
+            <button class="btn-link" (click)="showNewSite = !showNewSite">
+              {{ showNewSite ? 'Cancel new site' : '+ New site' }}
+            </button>
+          </div>
+          <div class="form-group" *ngIf="showNewType">
+            <label>New Type Name *</label>
+            <input [(ngModel)]="newTypeForm.name" placeholder="Cold Storage">
+            <input [(ngModel)]="newTypeForm.description" placeholder="Description">
+            <button class="btn-secondary" (click)="createWarehouseType()">Add Type</button>
+          </div>
+          <div class="form-group" *ngIf="showNewSite">
+            <label>New Site *</label>
+            <input [(ngModel)]="newSiteForm.code" placeholder="SITE-001">
+            <input [(ngModel)]="newSiteForm.name" placeholder="Downtown Store">
+            <input [(ngModel)]="newSiteForm.address" placeholder="Address">
+            <input [(ngModel)]="newSiteForm.city" placeholder="City">
+            <input [(ngModel)]="newSiteForm.country" placeholder="Country">
+            <div class="checkbox-row">
+              <label><input type="checkbox" [(ngModel)]="newSiteForm.isRetailStore"> Retail Store</label>
+              <label><input type="checkbox" [(ngModel)]="newSiteForm.isFulfillmentCenter"> Fulfillment</label>
+              <label><input type="checkbox" [(ngModel)]="newSiteForm.isReturnCenter"> Return Center</label>
+              <label><input type="checkbox" [(ngModel)]="newSiteForm.isWarehouse"> Warehouse</label>
+            </div>
+            <button class="btn-secondary" (click)="createOperationalSite()">Add Site</button>
+          </div>
+          <div class="form-group">
             <label>Address</label>
             <input [(ngModel)]="whForm.address" placeholder="123 Storage Blvd">
           </div>
@@ -619,6 +664,9 @@ select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:8px; font-siz
 .form-group label { font-size:12px; font-weight:600; color:#374151; }
 .form-group input, .form-group select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:14px; }
 .form-group input:focus, .form-group select:focus { outline:none; border-color:#6366f1; }
+.checkbox-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:4px 0; }
+.checkbox-row label { display:flex; align-items:center; gap:7px; font-weight:500; }
+.form-group .checkbox-row input[type="checkbox"] { width:16px; height:16px; padding:0; margin:0; }
 .form-row { display:flex; gap:24px; margin-top:12px; }
 .checkbox-label { display:flex; align-items:center; gap:8px; font-size:14px; cursor:pointer; }
 .header-actions { display:flex; gap:8px; }
@@ -632,6 +680,8 @@ export class WarehouseManagementComponent implements OnInit {
 
   // Data
   warehouses:     any[] = [];
+  warehouseTypes: any[] = [];
+  operationalSites: any[] = [];
   locations:      any[] = [];
   inboundOrders:  any[] = [];
   outboundOrders: any[] = [];
@@ -662,12 +712,20 @@ export class WarehouseManagementComponent implements OnInit {
   showOutboundModal = false;
   showTransferModal = false;
   showShipModal     = false;
+  showNewType       = false;
+  showNewSite       = false;
 
   editingWarehouse: any = null;
   shipTarget: any = null;
 
   // Forms
-  whForm       = { code:'', name:'', address:'', city:'', country:'' };
+  whForm       = { code:'', name:'', address:'', city:'', country:'', warehouseTypeId:'', siteId:'' };
+  newTypeForm  = { name:'', description:'' };
+  newSiteForm  = {
+    code:'', name:'', address:'', city:'', country:'',
+    isRetailStore:false, isFulfillmentCenter:false,
+    isReturnCenter:false, isWarehouse:true
+  };
   locForm      = { code:'', zone:'', aisle:'', bay:'', level:'', bin:'', isPickable:true, isReceivable:true };
   inboundForm  = { orderNumber:'', warehouseId:'', expectedDate:'', vendorName:'' };
   outboundForm = { orderNumber:'', warehouseId:'', requestedDate:'', customerName:'', shipToAddress:'' };
@@ -686,6 +744,7 @@ export class WarehouseManagementComponent implements OnInit {
 
   loadAll() {
     this.api.getWarehouses().subscribe({ next: d => { this.warehouses = d; this.applyWarehouseFilter(); }, error: () => {} });
+    this.loadWarehouseMasterData();
     this.api.getInboundOrders(this.orgId).subscribe({ next: d => { this.inboundOrders = d; this.applyInboundFilter(); }, error: () => {} });
     this.api.getOutboundOrders(this.orgId).subscribe({ next: d => { this.outboundOrders = d; this.applyOutboundFilter(); }, error: () => {} });
     this.api.getTransferOrders(this.orgId).subscribe({ next: d => { this.transferOrders = d; this.applyTransferFilter(); }, error: () => {} });
@@ -745,17 +804,31 @@ export class WarehouseManagementComponent implements OnInit {
   // ── Warehouse actions ─────────────────────────────────────────────
   openNewWarehouse() {
     this.editingWarehouse = null;
-    this.whForm = { code:'', name:'', address:'', city:'', country:'' };
+    this.whForm = {
+      code:'', name:'', address:'', city:'', country:'',
+      warehouseTypeId:this.warehouseTypes[0]?.id ?? '', siteId:''
+    };
+    this.showNewType = false;
+    this.showNewSite = false;
     this.showWhModal = true;
   }
 
   editWarehouse(w: any) {
     this.editingWarehouse = w;
-    this.whForm = { code: w.code, name: w.name, address: w.address||'', city: w.city||'', country: w.country||'' };
+    this.whForm = {
+      code: w.code, name: w.name, address: w.address||'', city: w.city||'',
+      country: w.country||'', warehouseTypeId: w.warehouseTypeId||'', siteId: w.siteId||''
+    };
+    this.showNewType = false;
+    this.showNewSite = false;
     this.showWhModal = true;
   }
 
   saveWarehouse() {
+    if (!this.whForm.warehouseTypeId) {
+      this.error = 'Select or create a warehouse type.';
+      return;
+    }
     if (this.editingWarehouse) {
       this.api.updateWarehouse(this.editingWarehouse.id, this.whForm).subscribe({
         next: () => { this.showWhModal = false; this.loadAll(); },
@@ -767,6 +840,51 @@ export class WarehouseManagementComponent implements OnInit {
         error: e => this.error = e.error?.error ?? 'Failed to create warehouse.'
       });
     }
+  }
+
+  loadWarehouseMasterData() {
+    this.api.getWarehouseTypes().subscribe({
+      next: rows => {
+        this.warehouseTypes = rows;
+        if (!this.whForm.warehouseTypeId && rows.length)
+          this.whForm.warehouseTypeId = rows[0].id;
+      }
+    });
+    this.api.getOperationalSites().subscribe({
+      next: rows => this.operationalSites = rows
+    });
+  }
+
+  createWarehouseType() {
+    this.error = '';
+    this.api.createWarehouseType(this.newTypeForm).subscribe({
+      next: type => {
+        this.warehouseTypes = [...this.warehouseTypes, type]
+          .sort((a, b) => a.name.localeCompare(b.name));
+        this.whForm.warehouseTypeId = type.id;
+        this.newTypeForm = { name:'', description:'' };
+        this.showNewType = false;
+      },
+      error: e => this.error = e.error?.error ?? 'Failed to create warehouse type.'
+    });
+  }
+
+  createOperationalSite() {
+    this.error = '';
+    this.api.createOperationalSite(this.newSiteForm).subscribe({
+      next: site => {
+        this.operationalSites = [...this.operationalSites, site]
+          .sort((a, b) => a.code.localeCompare(b.code));
+        this.whForm.siteId = site.id;
+        this.newSiteForm = {
+          code:'', name:'', address:'', city:'', country:'',
+          isRetailStore:false, isFulfillmentCenter:false,
+          isReturnCenter:false, isWarehouse:true
+        };
+        this.showNewSite = false;
+      },
+      error: e => this.error = e.error?.error ?? 'Failed to create site.'
+    });
   }
 
   activateWarehouse(w: any)   { this.api.activateWarehouse(w.id).subscribe({ next: () => this.loadAll() }); }
