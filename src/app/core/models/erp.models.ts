@@ -118,6 +118,21 @@ export interface RetailSettlement {
   processorReference?: string; bankTransactionId?: string; settledAt?: string;
 }
 
+export interface RetailStaging {
+  id: string; sourceFile: string; sourceHash: string; status: string;
+  storeCode: string; transactionNumber: string; businessDate: string;
+  transactionDate: string; currency: string; grandTotal: number;
+  lineCount: number; tenderCount: number; matchedLines: number; unmatchedLines: number;
+  validationMessage?: string; promotedTransactionId?: string;
+  retailStatementId?: string; createdAt: string; promotedAt?: string;
+}
+
+export interface RetailImportResult {
+  stagingId: string; stagingStatus: string; transactionId?: string;
+  statementId?: string; transactionNumber: string; duplicate: boolean;
+  matchedLines: number; unmatchedLines: number; validationMessage?: string;
+}
+
 export interface BatchJobConfig {
   id: string;
   name: string;

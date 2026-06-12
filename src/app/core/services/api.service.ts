@@ -4,6 +4,7 @@ import { environment } from '../../../environments/environment';
 import {
   Organization,
   ImportJob, ImportJobRow, RowResult, BatchJobConfig, RetailStatement, RetailSettlement,
+  RetailStaging, RetailImportResult,
   Category, Brand, ProductSummary, ProductDetail, InventoryDto, VariantLookup,
   FiscalYear, FiscalPeriod, AccountType, Account, JournalEntry, TrialBalanceLine,
   Customer, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport,
@@ -471,11 +472,14 @@ export class ApiService {
   uploadRetailPosLog = (file: File, post = true) => {
     const form = new FormData();
     form.append('file', file);
-    return this.http.post<{
-      transactionId: string; statementId: string; transactionNumber: string;
-      duplicate: boolean; matchedLines: number; unmatchedLines: number;
-    }>(`${this.base}/retail-statements/import?post=${post}`, form);
+    return this.http.post<RetailImportResult | RetailStaging>(
+      `${this.base}/retail-statements/import?post=${post}`, form);
   };
+  getRetailStaging = () =>
+    this.http.get<RetailStaging[]>(`${this.base}/retail-statements/staging?pageSize=200`);
+  promoteRetailStaging = (id: string, post = true) =>
+    this.http.post<RetailImportResult>(
+      `${this.base}/retail-statements/staging/${id}/promote?post=${post}`, {});
   getRetailStatements = () =>
     this.http.get<RetailStatement[]>(`${this.base}/retail-statements?pageSize=200`);
   getRetailSettlements = (status?: string) =>

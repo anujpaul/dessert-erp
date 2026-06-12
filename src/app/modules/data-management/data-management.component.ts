@@ -2,7 +2,9 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { ImportJob, ImportJobRow, RowResult, RetailStatement, RetailSettlement } from '../../core/models/erp.models';
+import {
+  ImportJob, ImportJobRow, RowResult, RetailStatement, RetailSettlement, RetailStaging
+} from '../../core/models/erp.models';
 
 type Tab = 'import' | 'retail' | 'export' | 'history';
 type ImportMode = 'immediate' | 'staged';
@@ -38,7 +40,7 @@ const FILE_FORMATS  = ['Csv', 'Json', 'Xml'];
       <div class="form-grid">
         <div class="field">
           <label>Entity Type</label>
-          <select [(ngModel)]="importEntityType" class="select-input">
+          <select [(ngModel)]="importEntityType" (ngModelChange)="onEntityTypeChange($event)" class="select-input">
             <option *ngFor="let e of entityTypes" [value]="e">{{ entityIcon(e) }} {{ e }}</option>
           </select>
         </div>
@@ -51,7 +53,7 @@ const FILE_FORMATS  = ['Csv', 'Json', 'Xml'];
       </div>
 
       <!-- Import mode -->
-      <div class="mode-toggle" *ngIf="importEntityType !== 'RetailTransaction'">
+      <div class="mode-toggle">
         <label class="mode-opt" [class.active]="importMode === 'immediate'" (click)="importMode = 'immediate'">
           <span class="mode-radio"></span>
           <div>
@@ -91,6 +93,10 @@ const FILE_FORMATS  = ['Csv', 'Json', 'Xml'];
           <span>{{ selectedFile.name }}</span>
           <button class="btn-ghost" (click)="clearFile()">✕ Remove</button>
         </div>
+      </div>
+
+      <div *ngIf="detectedImportType" class="template-row">
+        <span class="muted">{{ detectedImportType }}</span>
       </div>
 
       <div class="import-actions">
@@ -172,6 +178,27 @@ const FILE_FORMATS  = ['Csv', 'Json', 'Xml'];
 
   <!-- ═══════════════════════════════ EXPORT ═══════════════════════════════ -->
   <div *ngIf="activeTab === 'retail'" class="tab-content">
+    <div class="card">
+      <div class="card-title">Retail Transaction Staging</div>
+      <button class="btn-primary" (click)="loadRetail()">Refresh</button>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Transaction</th><th>Source</th><th>Store / Date</th><th>Lines</th><th>Total</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            <tr *ngFor="let s of retailStaging()">
+              <td><strong>{{ s.transactionNumber }}</strong><br><span class="muted">{{ s.currency }}</span></td>
+              <td>{{ s.sourceFile }}</td>
+              <td>{{ s.storeCode }}<br><span class="muted">{{ s.businessDate | date:'mediumDate' }}</span></td>
+              <td>{{ s.lineCount }}<br><span class="muted">{{ s.matchedLines }} matched, {{ s.unmatchedLines }} unmatched</span></td>
+              <td>{{ s.grandTotal | currency:s.currency }}</td>
+              <td>{{ s.status }}<div class="error-summary" *ngIf="s.validationMessage">{{ s.validationMessage }}</div></td>
+              <td><button class="btn-link" *ngIf="s.status === 'Valid'" (click)="promoteStaged(s)">Promote</button></td>
+            </tr>
+            <tr *ngIf="retailStaging().length === 0"><td colspan="7" class="muted-center">No staged retail transactions found.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
     <div class="card">
       <div class="card-title">Retail Statement Posting</div>
       <button class="btn-primary" (click)="loadRetail()">Refresh</button>
@@ -436,6 +463,7 @@ export class DataManagementComponent implements OnInit {
   importFileFormat = 'Csv';
   importMode: ImportMode = 'immediate';
   selectedFile: File | null = null;
+  detectedImportType = '';
   dragging  = false;
   importing = false;
   promoting = false;
@@ -449,6 +477,7 @@ export class DataManagementComponent implements OnInit {
   jobs = signal<ImportJob[]>([]);
   retailStatements = signal<RetailStatement[]>([]);
   retailSettlements = signal<RetailSettlement[]>([]);
+  retailStaging = signal<RetailStaging[]>([]);
   selectedHistoryJob: ImportJob | null = null;
   historyRows: ImportJobRow[] = [];
 
@@ -467,6 +496,7 @@ export class DataManagementComponent implements OnInit {
   }
 
   loadRetail() {
+    this.api.getRetailStaging().subscribe(rows => this.retailStaging.set(rows));
     this.api.getRetailStatements().subscribe(rows => this.retailStatements.set(rows));
     this.api.getRetailSettlements().subscribe(rows => this.retailSettlements.set(rows));
   }
@@ -478,9 +508,17 @@ export class DataManagementComponent implements OnInit {
     });
   }
 
+  promoteStaged(staging: RetailStaging) {
+    this.api.promoteRetailStaging(staging.id, true).subscribe({
+      next: () => this.loadRetail(),
+      error: err => alert('Promotion failed: ' + (err.error?.error ?? err.message))
+    });
+  }
+
   // ── File helpers ───────────────────────────────────────────────────────────
 
   fileAccept(): string {
+    if (this.importEntityType !== 'RetailTransaction') return '.csv,.json,.xml';
     switch (this.importFileFormat) {
       case 'Json': return '.json';
       case 'Xml':  return '.xml';
@@ -492,20 +530,48 @@ export class DataManagementComponent implements OnInit {
     return this.importFileFormat.toUpperCase();
   }
 
-  onFileSelect(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (input.files?.length) this.selectedFile = input.files[0];
+  onEntityTypeChange(entityType: string) {
+    if (entityType === 'RetailTransaction') {
+      this.importFileFormat = 'Xml';
+      this.importMode = 'immediate';
+    }
   }
 
-  onDrop(event: DragEvent) {
+  async onFileSelect(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.files?.length) await this.selectFile(input.files[0]);
+  }
+
+  async onDrop(event: DragEvent) {
     event.preventDefault();
     this.dragging = false;
     const file = event.dataTransfer?.files[0];
-    if (file) this.selectedFile = file;
+    if (file) await this.selectFile(file);
+  }
+
+  private async selectFile(file: File) {
+    this.selectedFile = file;
+    this.detectedImportType = '';
+
+    if (!file.name.toLowerCase().endsWith('.xml')) return;
+
+    const sample = await file.slice(0, 128 * 1024).text();
+    const isRetailPosLog =
+      /<(?:[\w.-]+:)?TransactionDomainSpecific\b/i.test(sample) &&
+      /\bTypeCode\s*=\s*["']RetailTransaction["']/i.test(sample);
+
+    if (isRetailPosLog) {
+      this.importEntityType = 'RetailTransaction';
+      this.importFileFormat = 'Xml';
+      this.importMode = 'immediate';
+      this.detectedImportType =
+        'Retail POSLog detected. It will be imported and posted as a retail transaction.';
+    }
   }
 
   clearFile() {
     this.selectedFile = null;
+    this.detectedImportType = '';
     this.lastJob      = null;
     this.stagedJob    = null;
     this.rowResults   = [];
@@ -528,17 +594,25 @@ export class DataManagementComponent implements OnInit {
         this.importing = false;
         return;
       }
-      this.api.uploadRetailPosLog(this.selectedFile, true).subscribe({
+      const promoteNow = this.importMode === 'immediate';
+      this.api.uploadRetailPosLog(this.selectedFile, promoteNow).subscribe({
         next: result => {
-          const lineResult = `${result.matchedLines} inventory line(s) matched, ${result.unmatchedLines} unmatched`;
-          alert(result.duplicate
-            ? `Transaction ${result.transactionNumber} was already imported.`
-            : `Retail transaction ${result.transactionNumber} imported and posted. ${lineResult}.`);
+          if ('status' in result) {
+            alert(`Retail transaction ${result.transactionNumber} staged with status ${result.status}.`);
+          } else {
+            const lineResult =
+              `${result.matchedLines} inventory line(s) matched, ${result.unmatchedLines} unmatched`;
+            alert(result.duplicate
+              ? `Transaction ${result.transactionNumber} was already promoted.`
+              : `Retail transaction ${result.transactionNumber} staged, promoted, and posted. ${lineResult}.`);
+          }
           this.importing = false;
           this.clearFile();
+          this.loadRetail();
         },
         error: err => {
-          alert('Retail import failed: ' + (err.error?.error ?? err.message));
+          alert('Retail import failed: ' +
+            (err.error?.error ?? err.error?.validationMessage ?? err.message));
           this.importing = false;
         }
       });
