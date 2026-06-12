@@ -361,8 +361,14 @@ export interface CustomerLoyaltyAccount {
 }
 
 // ── General Ledger ────────────────────────────────────────────────────────────
+export interface FiscalCalendar {
+  id: string; name: string; description: string;
+  calendarType: 'Monthly' | 'Quarterly' | '4-4-5' | '4-5-4' | '5-4-4' | 'Custom';
+  isDefault: boolean; fiscalYearCount: number; createdAt: string;
+}
 export interface FiscalYear {
   id: string; name: string; description: string;
+  fiscalCalendarId: string; fiscalCalendarName: string;
   startDate: string; endDate: string; calendarType: string;
   status: 'Open' | 'Closed' | 'OnHold'; periodCount: number; createdAt: string;
 }

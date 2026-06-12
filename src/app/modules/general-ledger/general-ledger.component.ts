@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
-import { FiscalYear, FiscalPeriod, Account, AccountType, JournalEntry, TrialBalanceLine, Currency } from '../../core/models/erp.models';
+import { FiscalCalendar, FiscalYear, FiscalPeriod, Account, AccountType, JournalEntry, TrialBalanceLine, Currency } from '../../core/models/erp.models';
 
 type Tab = 'fiscal' | 'coa' | 'journal' | 'trial' | 'currencies';
 
@@ -30,20 +30,69 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial' | 'currencies';
   <!-- ── FISCAL CALENDAR ── -->
   <div *ngIf="activeTab === 'fiscal'" class="tab-content">
     <div class="toolbar">
-      <button class="btn-primary" (click)="showCreateFY = !showCreateFY">+ New Fiscal Year</button>
+      <select class="filter-select" [ngModel]="selectedCalendar?.id" (ngModelChange)="selectCalendarById($event)">
+        <option value="">Select fiscal calendar</option>
+        <option *ngFor="let calendar of fiscalCalendars" [value]="calendar.id">
+          {{ calendar.name }} ({{ calendar.calendarType }}){{ calendar.isDefault ? ' - Default' : '' }}
+        </option>
+      </select>
+      <button class="btn-ghost" (click)="showCreateCalendar = !showCreateCalendar">+ New Calendar</button>
+      <button class="btn-primary" (click)="showCreateFY = !showCreateFY" [disabled]="!selectedCalendar">+ New Fiscal Year</button>
+    </div>
+
+    <div *ngIf="showCreateCalendar" class="form-card">
+      <div class="form-title">New Fiscal Calendar</div>
+      <div class="form-grid">
+        <div class="form-field"><label>Name</label><input [(ngModel)]="calendarForm.name" placeholder="Retail Calendar" /></div>
+        <div class="form-field"><label>Description</label><input [(ngModel)]="calendarForm.description" placeholder="Calendar used by retail operations" /></div>
+        <div class="form-field">
+          <label>Calendar Type</label>
+          <select [(ngModel)]="calendarForm.calendarType">
+            <option *ngFor="let type of calendarTypes" [value]="type">{{ type }}</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Default Posting Calendar</label>
+          <select [(ngModel)]="calendarForm.isDefault">
+            <option [ngValue]="false">No</option>
+            <option [ngValue]="true">Yes</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" (click)="createCalendar()">Create Calendar</button>
+        <button class="btn-ghost" (click)="showCreateCalendar = false">Cancel</button>
+      </div>
+    </div>
+
+    <div *ngIf="selectedCalendar" class="calendar-summary">
+      <div>
+        <strong>{{ selectedCalendar.name }}</strong>
+        <span>{{ selectedCalendar.calendarType }} · {{ selectedCalendar.fiscalYearCount }} fiscal year(s)</span>
+      </div>
+      <button *ngIf="!selectedCalendar.isDefault" class="btn-ghost btn-sm" (click)="setDefaultCalendar()">Set as Default</button>
+      <span *ngIf="selectedCalendar.isDefault" class="badge badge-open">Default Posting Calendar</span>
     </div>
 
     <!-- Create FY Form -->
-    <div *ngIf="showCreateFY" class="form-card">
-      <div class="form-title">New Fiscal Year</div>
+    <div *ngIf="showCreateFY && selectedCalendar" class="form-card">
+      <div class="form-title">New Fiscal Year in {{ selectedCalendar.name }}</div>
       <div class="form-grid">
         <div class="form-field"><label>Name</label><input [(ngModel)]="fyForm.name" placeholder="FY2027" /></div>
         <div class="form-field"><label>Description</label><input [(ngModel)]="fyForm.description" placeholder="Fiscal Year 2027" /></div>
         <div class="form-field"><label>Start Date</label><input type="date" [(ngModel)]="fyForm.startDate" /></div>
         <div class="form-field"><label>End Date</label><input type="date" [(ngModel)]="fyForm.endDate" /></div>
+        <div class="form-field">
+          <label>Period Creation</label>
+          <select [(ngModel)]="fyForm.autoGeneratePeriods" [disabled]="selectedCalendar.calendarType === 'Custom'">
+            <option [ngValue]="true">Generate {{ selectedCalendar.calendarType }} periods</option>
+            <option [ngValue]="false">Create periods manually</option>
+          </select>
+        </div>
       </div>
       <p style="font-size:.82rem;color:#6b7280;margin:.25rem 0 .75rem">
-        Periods are <strong>not</strong> auto-created. After saving, use "+ Add Period" or "Generate" to define them.
+        Calendar pattern: <strong>{{ selectedCalendar.calendarType }}</strong>.
+        Custom calendars use manually entered periods.
       </p>
       <div class="form-actions">
         <button class="btn-primary" (click)="createFY()">Create Fiscal Year</button>
@@ -84,12 +133,10 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial' | 'currencies';
           <span>Periods</span>
           <div style="display:flex;gap:.5rem" *ngIf="selectedFY.status === 'Open'">
             <!-- Generate dropdown -->
-            <div style="position:relative">
+            <div style="position:relative" *ngIf="selectedFY.calendarType !== 'Custom'">
               <button class="btn-ghost btn-sm" (click)="showGenerateMenu = !showGenerateMenu">⚡ Generate ▾</button>
               <div *ngIf="showGenerateMenu" style="position:absolute;right:0;top:100%;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;z-index:10;min-width:160px;box-shadow:0 4px 12px rgba(0,0,0,.15)">
-                <button class="gen-menu-item" (click)="generatePeriods('Monthly')">📅 Monthly (12)</button>
-                <button class="gen-menu-item" (click)="generatePeriods('Quarterly')">📊 Quarterly (4)</button>
-                <button class="gen-menu-item" (click)="generatePeriods('4-4-5')">🗓 4-4-5 Retail (12)</button>
+                <button class="gen-menu-item" (click)="generatePeriods()">Generate {{ selectedFY.calendarType }} periods</button>
               </div>
             </div>
             <button class="btn-primary btn-sm" (click)="showAddPeriod = !showAddPeriod">+ Add Period</button>
@@ -533,6 +580,10 @@ type Tab = 'fiscal' | 'coa' | 'journal' | 'trial' | 'currencies';
     .form-field label { font-size: .75rem; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: .04em; }
     .form-field input, .form-field select { padding: .45rem .6rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: .875rem; }
     .form-actions { display: flex; gap: .5rem; }
+    .calendar-summary { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.75rem 1rem; margin-bottom:1rem; border:1px solid #bfdbfe; background:#eff6ff; border-radius:8px; }
+    .calendar-summary > div { display:flex; flex-direction:column; gap:.15rem; }
+    .calendar-summary strong { color:#0f172a; font-size:.9rem; }
+    .calendar-summary span { color:#64748b; font-size:.78rem; }
 
     .split { display: grid; grid-template-columns: 300px 1fr; gap: 1rem; }
     .list-panel { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: #fff; height: fit-content; }
@@ -592,11 +643,16 @@ export class GeneralLedgerComponent implements OnInit {
   ];
 
   // Fiscal
+  fiscalCalendars: FiscalCalendar[] = [];
+  selectedCalendar: FiscalCalendar | null = null;
   fiscalYears: FiscalYear[] = [];
   selectedFY: FiscalYear | null = null;
   periods: FiscalPeriod[] = [];
+  showCreateCalendar = false;
   showCreateFY = false;
-  fyForm = { name: '', description: '', startDate: '', endDate: '' };
+  calendarTypes = ['Monthly', 'Quarterly', '4-4-5', '4-5-4', '5-4-4', 'Custom'];
+  calendarForm = { name: '', description: '', calendarType: 'Monthly', isDefault: false };
+  fyForm = { name: '', description: '', startDate: '', endDate: '', autoGeneratePeriods: true };
 
   // Period management
   showAddPeriod = false;
@@ -658,7 +714,7 @@ export class GeneralLedgerComponent implements OnInit {
   constructor(private api: ApiService) {}
 
   ngOnInit() {
-    this.api.getFiscalYears().subscribe(d => this.fiscalYears = d);
+    this.loadFiscalCalendars();
     this.api.getAccounts().subscribe(d => this.accounts = d);
     this.api.getAccountTypes().subscribe(d => this.accountTypes = d);
     this.loadAllPeriods();
@@ -678,12 +734,83 @@ export class GeneralLedgerComponent implements OnInit {
     this.api.getPeriods(fy.id).subscribe(d => this.periods = d);
   }
 
+  loadFiscalCalendars(selectId?: string) {
+    this.api.getFiscalCalendars().subscribe({
+      next: calendars => {
+        this.fiscalCalendars = calendars;
+        const selected = calendars.find(c => c.id === selectId)
+          ?? calendars.find(c => c.id === this.selectedCalendar?.id)
+          ?? calendars.find(c => c.isDefault)
+          ?? calendars[0]
+          ?? null;
+        this.selectCalendar(selected);
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to load fiscal calendars.')
+    });
+  }
+
+  selectCalendar(calendar: FiscalCalendar | null) {
+    this.selectedCalendar = calendar;
+    this.selectedFY = null;
+    this.periods = [];
+    this.fiscalYears = [];
+    if (!calendar) return;
+    if (calendar.calendarType === 'Custom') this.fyForm.autoGeneratePeriods = false;
+    this.api.getFiscalYears(calendar.id).subscribe({
+      next: years => this.fiscalYears = years,
+      error: (err: any) => alert(err.error?.error ?? 'Failed to load fiscal years.')
+    });
+  }
+
+  selectCalendarById(id: string) {
+    this.selectCalendar(this.fiscalCalendars.find(c => c.id === id) ?? null);
+  }
+
+  createCalendar() {
+    this.api.createFiscalCalendar({ ...this.calendarForm }).subscribe({
+      next: calendar => {
+        this.showCreateCalendar = false;
+        this.calendarForm = { name: '', description: '', calendarType: 'Monthly', isDefault: false };
+        this.loadFiscalCalendars(calendar.id);
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to create fiscal calendar.')
+    });
+  }
+
+  setDefaultCalendar() {
+    if (!this.selectedCalendar || this.selectedCalendar.isDefault) return;
+    this.api.setDefaultFiscalCalendar(this.selectedCalendar.id).subscribe({
+      next: () => this.loadFiscalCalendars(this.selectedCalendar!.id),
+      error: (err: any) => alert(err.error?.error ?? 'Failed to set the default calendar.')
+    });
+  }
+
   createFY() {
-    this.api.createFiscalYear({ ...this.fyForm }).subscribe(d => {
-      this.fiscalYears = [d, ...this.fiscalYears];
-      this.showCreateFY = false;
-      this.fyForm = { name: '', description: '', startDate: '', endDate: '' };
-      this.selectFY(d);
+    if (!this.selectedCalendar) return;
+    this.api.createFiscalYear({
+      ...this.fyForm,
+      fiscalCalendarId: this.selectedCalendar.id
+    }).subscribe({
+      next: d => {
+        this.fiscalYears = [d, ...this.fiscalYears];
+        this.showCreateFY = false;
+        this.fyForm = {
+          name: '',
+          description: '',
+          startDate: '',
+          endDate: '',
+          autoGeneratePeriods: this.selectedCalendar!.calendarType !== 'Custom'
+        };
+        this.selectFY(d);
+        this.selectedCalendar = {
+          ...this.selectedCalendar!,
+          fiscalYearCount: this.selectedCalendar!.fiscalYearCount + 1
+        };
+        this.fiscalCalendars = this.fiscalCalendars.map(c =>
+          c.id === this.selectedCalendar!.id ? this.selectedCalendar! : c);
+        this.loadAllPeriods();
+      },
+      error: (err: any) => alert(err.error?.error ?? 'Failed to create fiscal year.')
     });
   }
 
@@ -701,9 +828,10 @@ export class GeneralLedgerComponent implements OnInit {
     });
   }
 
-  generatePeriods(type: string) {
+  generatePeriods() {
     if (!this.selectedFY) return;
     this.showGenerateMenu = false;
+    const type = this.selectedFY.calendarType;
     if (!confirm('This will replace all existing periods with ' + type + ' periods. Continue?')) return;
     this.api.generatePeriods(this.selectedFY.id, type).subscribe({
       next: (periods: FiscalPeriod[]) => {
@@ -762,7 +890,7 @@ export class GeneralLedgerComponent implements OnInit {
   }
 
   closeFY(id: string) {
-    this.api.closeFiscalYear(id).subscribe(() => this.api.getFiscalYears().subscribe(d => {
+    this.api.closeFiscalYear(id).subscribe(() => this.api.getFiscalYears(this.selectedCalendar?.id).subscribe(d => {
       this.fiscalYears = d;
       this.selectedFY = d.find((y: FiscalYear) => y.id === id) ?? null;
     }));

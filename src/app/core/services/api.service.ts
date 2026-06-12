@@ -6,7 +6,7 @@ import {
   ImportJob, ImportJobRow, RowResult, BatchJobConfig, RetailStatement, RetailSettlement,
   RetailStaging, RetailImportResult,
   Category, Brand, ProductSummary, ProductDetail, InventoryDto, VariantLookup,
-  FiscalYear, FiscalPeriod, AccountType, Account, JournalEntry, TrialBalanceLine,
+  FiscalCalendar, FiscalYear, FiscalPeriod, AccountType, Account, JournalEntry, TrialBalanceLine,
   Customer, SalesOrderSummary, SalesOrder, ARInvoice, ARAgingReport,
   Vendor, PurchaseOrderSummary, PurchaseOrder, APInvoice, APAgingReport,
   RetailStore, POSTransactionSummary, POSTransaction, Promotion, Coupon,
@@ -69,7 +69,13 @@ export class ApiService {
   };
 
   // ── General Ledger ─────────────────────────────────────────────────────────
-  getFiscalYears = () => this.http.get<FiscalYear[]>(`${this.base}/gl/fiscal-years`);
+  getFiscalCalendars = () => this.http.get<FiscalCalendar[]>(`${this.base}/gl/fiscal-calendars`);
+  createFiscalCalendar = (r: any) => this.http.post<FiscalCalendar>(`${this.base}/gl/fiscal-calendars`, r);
+  setDefaultFiscalCalendar = (id: string) => this.http.post<void>(`${this.base}/gl/fiscal-calendars/${id}/set-default`, {});
+  getFiscalYears = (fiscalCalendarId?: string) => {
+    const params = fiscalCalendarId ? new HttpParams().set('fiscalCalendarId', fiscalCalendarId) : undefined;
+    return this.http.get<FiscalYear[]>(`${this.base}/gl/fiscal-years`, { params });
+  };
   createFiscalYear = (r: any) => this.http.post<FiscalYear>(`${this.base}/gl/fiscal-years`, r);
   closeFiscalYear = (id: string) => this.http.post<void>(`${this.base}/gl/fiscal-years/${id}/close`, {});
   getPeriods      = (fyId: string) => this.http.get<FiscalPeriod[]>(`${this.base}/gl/fiscal-years/${fyId}/periods`);
